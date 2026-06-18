@@ -1,0 +1,2 @@
+Japanese Street URP setup completed at 2026-05-28 18:48:25.
+Generated scene: Assets/Scenes/JapaneseStreetVR.unity
