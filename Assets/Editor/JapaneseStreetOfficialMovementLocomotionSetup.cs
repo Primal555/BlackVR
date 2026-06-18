@@ -214,13 +214,8 @@ public static class JapaneseStreetOfficialMovementLocomotionSetup
             EditorUtility.SetDirty(retargetingLayer);
         }
 
-        var rigBuilder = character.GetComponent<RigBuilder>();
-        if (rigBuilder != null)
-        {
-            Undo.RecordObject(rigBuilder, "Enable official locomotion RigBuilder");
-            rigBuilder.enabled = true;
-            EditorUtility.SetDirty(rigBuilder);
-        }
+        // Movement retargeting owns the rig lifecycle at runtime through RetargetingLayer.
+        // Do not force-enable RigBuilder in edit mode; doing so can stall Quest/Link startup.
 
         foreach (var animator in character.GetComponentsInChildren<Animator>(true))
         {

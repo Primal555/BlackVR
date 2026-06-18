@@ -155,13 +155,8 @@ public static class BlackOfficialUpperBodyRetargetingSetup
             EditorUtility.SetDirty(retargetingLayer);
         }
 
-        var rigBuilder = setupObject.GetComponent<RigBuilder>();
-        if (rigBuilder != null)
-        {
-            Undo.RecordObject(rigBuilder, "Enable official locomotion RigBuilder");
-            rigBuilder.enabled = true;
-            EditorUtility.SetDirty(rigBuilder);
-        }
+        // Movement retargeting owns the rig lifecycle at runtime through RetargetingLayer.
+        // Do not force-enable RigBuilder in edit mode; doing so can stall Quest/Link startup.
 
         return retargetingLayer;
     }
