@@ -8,7 +8,6 @@ public sealed class BlackFullBodyFirstPersonHeadHider : MonoBehaviour
 {
     [SerializeField] private string hiddenHeadLayerName = "HiddenMesh";
     [SerializeField] private string noDrawMaterialResource = "FirstPersonNoDraw";
-    [SerializeField] private string shadowCasterMaterialResource = "FirstPersonNoDrawShadowCaster";
     [SerializeField] private string[] headMaterialNameTokens =
     {
         "Mask",
@@ -39,15 +38,9 @@ public sealed class BlackFullBodyFirstPersonHeadHider : MonoBehaviour
         }
 
         var noDrawMaterial = Resources.Load<Material>(noDrawMaterialResource);
-        var shadowCasterMaterial = Resources.Load<Material>(shadowCasterMaterialResource);
         if (noDrawMaterial == null)
         {
             Debug.LogWarning($"[{nameof(BlackFullBodyFirstPersonHeadHider)}] Resources material '{noDrawMaterialResource}' was not found.");
-            return;
-        }
-        if (shadowCasterMaterial == null)
-        {
-            Debug.LogWarning($"[{nameof(BlackFullBodyFirstPersonHeadHider)}] Resources material '{shadowCasterMaterialResource}' was not found.");
             return;
         }
 
@@ -61,13 +54,13 @@ public sealed class BlackFullBodyFirstPersonHeadHider : MonoBehaviour
                 continue;
             }
 
-            SplitHeadMaterials(rendererComponent, noDrawMaterial, shadowCasterMaterial, hiddenLayer);
+            SplitHeadMaterials(rendererComponent, noDrawMaterial, hiddenLayer);
         }
 
         HideLayerFromFirstPersonCameras(hiddenLayer);
     }
 
-    private void SplitHeadMaterials(SkinnedMeshRenderer source, Material noDrawMaterial, Material shadowCasterMaterial, int hiddenLayer)
+    private void SplitHeadMaterials(SkinnedMeshRenderer source, Material noDrawMaterial, int hiddenLayer)
     {
         var sourceMaterials = source.sharedMaterials;
         if (sourceMaterials == null || sourceMaterials.Length == 0)
@@ -85,7 +78,7 @@ public sealed class BlackFullBodyFirstPersonHeadHider : MonoBehaviour
             if (IsHeadMaterial(material))
             {
                 hasHeadMaterial = true;
-                bodyMaterials[i] = shadowCasterMaterial;
+                bodyMaterials[i] = noDrawMaterial;
                 headMaterials[i] = material;
             }
             else
@@ -105,6 +98,7 @@ public sealed class BlackFullBodyFirstPersonHeadHider : MonoBehaviour
         var cloneObject = new GameObject($"{source.name}_FirstPersonHiddenHead");
         cloneObject.layer = hiddenLayer;
         cloneObject.transform.SetParent(source.transform, false);
+        cloneObject.hideFlags = HideFlags.DontSaveInBuild | HideFlags.DontSaveInEditor;
 
         var clone = cloneObject.AddComponent<SkinnedMeshRenderer>();
         clone.sharedMesh = source.sharedMesh;
