@@ -365,14 +365,14 @@ public static class JapaneseStreetUrpSetup
         foreach (var reflectionProbe in scene.GetRootGameObjects()
                      .SelectMany(root => root.GetComponentsInChildren<ReflectionProbe>(includeInactive: true)))
         {
-            reflectionProbe.enabled = false;
+            reflectionProbe.enabled = true;
             EditorUtility.SetDirty(reflectionProbe);
         }
 
         foreach (var lightProbeGroup in scene.GetRootGameObjects()
                      .SelectMany(root => root.GetComponentsInChildren<LightProbeGroup>(includeInactive: true)))
         {
-            lightProbeGroup.enabled = false;
+            lightProbeGroup.enabled = true;
             EditorUtility.SetDirty(lightProbeGroup);
         }
 
@@ -384,8 +384,7 @@ public static class JapaneseStreetUrpSetup
                 continue;
             }
 
-            light.shadows = LightShadows.None;
-            light.intensity = Mathf.Min(light.intensity, 0.85f);
+            light.shadows = LightShadows.Soft;
             EditorUtility.SetDirty(light);
         }
     }
