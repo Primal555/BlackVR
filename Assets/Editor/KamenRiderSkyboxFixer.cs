@@ -12,7 +12,6 @@ using UnityEngine;
 public static class KamenRiderSkyboxFixer
 {
     private const string ScenePathVr = "Assets/Scenes/JapaneseStreetVR.unity";
-    private const string ScenePathVrLite = "Assets/Scenes/JapaneseStreetVR_Lite.unity";
     private const string SkyMaterialPath = "Assets/Japanese_Street/Textures/Sky.mat";
     private const string HdrTexturePath = "Assets/Japanese_Street/Textures/kloofendal_48d_partly_cloudy_4k.hdr";
 
@@ -21,7 +20,7 @@ public static class KamenRiderSkyboxFixer
     {
         EditorApplication.delayCall += () =>
         {
-            if (SceneNeedsFix(ScenePathVr) || SceneNeedsFix(ScenePathVrLite))
+            if (SceneNeedsFix(ScenePathVr))
             {
                 Run();
             }
@@ -39,12 +38,11 @@ public static class KamenRiderSkyboxFixer
         }
 
         FixSceneSkyboxRef(ScenePathVr, skyMaterial);
-        FixSceneSkyboxRef(ScenePathVrLite, skyMaterial);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
-        Debug.Log("[SkyboxFixer] Skybox fix completed. Both VR scenes now use URP Panoramic skybox.");
+        Debug.Log("[SkyboxFixer] Skybox fix completed. JapaneseStreetVR now uses URP Panoramic skybox.");
     }
 
     /// <summary>

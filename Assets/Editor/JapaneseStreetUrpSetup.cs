@@ -12,7 +12,6 @@ public static class JapaneseStreetUrpSetup
     private const string AssetRoot = "Assets/Japanese_Street";
     private const string SourceScenePath = AssetRoot + "/Scenes/Showcase.unity";
     private const string ProjectScenePath = "Assets/Scenes/JapaneseStreetVR.unity";
-    private const string LiteScenePath = "Assets/Scenes/JapaneseStreetVR_Lite.unity";
     private const string MarkerPath = AssetRoot + "/.kamen-rider-urp-setup.txt";
 
     [InitializeOnLoadMethod]
@@ -23,11 +22,6 @@ public static class JapaneseStreetUrpSetup
             if (File.Exists(ProjectScenePath) && SceneNeedsSanitizing())
             {
                 FixJapaneseStreetVrScene();
-            }
-
-            if (File.Exists(ProjectScenePath) && !File.Exists(LiteScenePath))
-            {
-                CreateJapaneseStreetVrLiteScene();
             }
 
             if (!AssetDatabase.IsValidFolder(AssetRoot) ||
@@ -87,39 +81,6 @@ public static class JapaneseStreetUrpSetup
         EditorSceneManager.CloseScene(scene, removeScene: true);
 
         Debug.Log("Japanese Street VR scene cameras were sanitized.");
-    }
-
-    [MenuItem("Kamen Rider/Create Japanese Street VR Lite Scene")]
-    public static void CreateJapaneseStreetVrLiteScene()
-    {
-        if (!File.Exists(ProjectScenePath))
-        {
-            Debug.LogWarning($"Project scene was not found: {ProjectScenePath}");
-            return;
-        }
-
-        if (File.Exists(LiteScenePath))
-        {
-            AssetDatabase.DeleteAsset(LiteScenePath);
-        }
-
-        AssetDatabase.CopyAsset(ProjectScenePath, LiteScenePath);
-        AssetDatabase.ImportAsset(LiteScenePath);
-
-        var scene = EditorSceneManager.OpenScene(LiteScenePath, OpenSceneMode.Additive);
-        RemoveLegacyCamera(scene);
-        AddXrOrigin(scene);
-        OptimizeSceneForVr(scene);
-        AddBasicStreetColliders(scene);
-        EditorSceneManager.SaveScene(scene);
-        EditorSceneManager.CloseScene(scene, removeScene: true);
-
-        var scenes = EditorBuildSettings.scenes.ToList();
-        scenes.RemoveAll(item => item.path == LiteScenePath);
-        scenes.Insert(0, new EditorBuildSettingsScene(LiteScenePath, enabled: true));
-        EditorBuildSettings.scenes = scenes.ToArray();
-
-        Debug.Log("Created Japanese Street VR Lite scene and moved it to the top of Build Settings.");
     }
 
     private static void ConvertMaterials()
