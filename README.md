@@ -81,10 +81,9 @@
 
 ## 注意事项
 
-- 如果场景打开后显示缺少 package，请先解决网络和包下载问题，不要急着修改场景对象。
+- 如果场景打开后显示缺少 package，请先解决网络和包下载问题。
 - 如果头显或手柄跟踪失效，优先检查 Meta XR runtime、Quest / Link 连接状态和 body tracking 设置。
-- 如果进入 Play Mode 后出现黑屏或小沙漏，检查 `BlackFullBody` 的 `RigBuilder` 是否被重新启用。
+- 如果进入 Play Mode 后出现黑屏或小沙漏，检查 `BlackFullBody` 的 `RigBuilder` 是否被错误启用。同时应当关注日志中的报错。我本机测试目前一切正常
 - 如果角色移动后身体消失，检查 `BlackFullBodySkinnedMeshCullingFix` 是否仍然挂载并启用。
 - 如果转身时脚腕扭曲，检查 deformation 配置中的 `_alignFeetWeight` 是否仍为 `0`。
-- 不建议把 `Library/` 缓存提交到 git。它体积很大，而且依赖本机 Unity 环境；fresh clone 后让 Unity 重新下载和导入依赖包更稳定。
 
