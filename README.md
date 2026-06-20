@@ -1,73 +1,90 @@
 # Kamen Rider VR
 
-Unity VR project based on Meta XR SDK and Meta Movement SDK. The current main scene is a Japanese street VR scene with a tracked BlackFullBody character, joystick locomotion, first-person head hiding, and head shadow support.
+这是一个基于 Meta XR SDK 和 Meta Movement SDK 的 Unity VR 项目。当前主场景是 Japanese Street VR，包含可被头显和手柄跟踪的 `BlackFullBody` 角色、摇杆移动、第一人称头部隐藏，以及头部阴影投影支持。
 
-## Requirements
+## 环境要求
 
 - Unity `2022.3.9f1`
-- Meta Quest / Quest Link compatible runtime
-- Unity Hub with Android Build Support if building for Quest
-- Network access to Unity Package Manager, GitHub, and Meta package sources
+- Meta Quest / Quest Link 兼容运行环境
+- 如果需要打包到 Quest，需要在 Unity Hub 中安装 Android Build Support
+- 首次打开项目时，需要能够访问 Unity Package Manager、GitHub 和 Meta 相关包源
 
-On first load, Unity needs to download packages listed in `Packages/manifest.json`. Some Meta packages and the Movement SDK package may require VPN or another network path that can access GitHub/Meta package resources.
+首次加载项目时，Unity 会根据 `Packages/manifest.json` 下载依赖包。部分 Meta 包和 Movement SDK 包可能需要 VPN 或其他可访问 GitHub / Meta 包源的网络环境。
 
-Important packages include:
+主要依赖包括：
 
 - `com.meta.xr.sdk.all` `71.0.0`
-- `com.meta.movement` from `https://github.com/oculus-samples/Unity-Movement.git#v71.0.1`
+- `com.meta.movement`，来源为 `https://github.com/oculus-samples/Unity-Movement.git#v71.0.1`
 - `com.unity.animation.rigging` `1.2.1`
 - `com.unity.render-pipelines.universal` `14.0.8`
 - `com.unity.inputsystem` `1.13.1`
 
-## Main Scene
+## 主场景
 
-Open this scene:
+打开以下场景：
 
 `Assets/Scenes/JapaneseStreetVR.unity`
 
-This is the scene used for the final working configuration.
+这是当前最终可用配置所在的主场景。
 
-## Current Character Setup
+## 首次打开项目
 
-The active character setup uses `BlackFullBody` with Meta Movement retargeting and joystick locomotion.
+1. 使用 Unity `2022.3.9f1` 打开项目。
+2. 在 Unity 解析包之前，确保当前网络可以访问 Unity Package Manager、GitHub 和 Meta 包源。
+3. 等待 Unity Package Manager 完成所有依赖包下载和导入。
+4. 打开 `Assets/Scenes/JapaneseStreetVR.unity`。
+5. 连接 Quest / Quest Link，并确认 Meta XR runtime 正常运行。
+6. 进入 Play Mode 后测试：
+   - 摇杆移动
+   - 头显和双手控制器跟踪
+   - `BlackFullBody` 移动时是否保持可见
+   - 转身时脚腕方向是否正常
+   - 第一人称头部是否隐藏
+   - 头部是否仍然能投射阴影
 
-Key behavior:
+## Meta XR 配置提示
 
-- `PlayerController` drives movement through `MovementSDKLocomotion`.
-- `OVRCameraRig` is under `PlayerController` so the player viewpoint follows locomotion.
-- `MovementSdkOvrThumbstickInput` reads OVR thumbstick input and writes it to `MovementSDKLocomotion.UserInput`.
-- `BlackFullBody` uses full-body retargeting.
-- `RigBuilder` on `BlackFullBody` is intentionally disabled. Do not enable it unless you are deliberately changing the retargeting pipeline.
-- A separate locomotion skeleton processor is used so `BlackFullBody` does not fight the official sample body for the same processor resources.
+首次从 git clone 或 zip 解压后打开项目时，Meta XR Project Setup Tool 可能会显示一些配置警告或报错。这通常是正常现象，不一定说明项目文件缺失。
 
-## Known Fixes Preserved In This Version
+原因是项目不会提交 Unity 自动生成的 `Library/` 缓存，而 Meta XR 的一部分检查依赖当前机器、Unity Editor、Android Build Support、Quest / Link 运行环境和 Package 导入状态。换电脑或重新 clone 后，Unity 会重新导入资源、重新下载包，并重新运行 Meta XR 的项目配置检查。
 
-- Body tracking and joystick locomotion work together in `JapaneseStreetVR`.
-- `BlackFullBodySkinnedMeshCullingFix` keeps the skinned mesh visible after locomotion moves the body away from its original bounds.
-- Foot deformation alignment is disabled with `_alignFeetWeight: 0` to prevent ankle twisting when turning.
-- First-person head hiding uses `BlackFullBodyFirstPersonHeadHider`.
-- `FirstPersonNoDraw` hides the head from the player camera while still supporting a ShadowCaster pass, so the head can cast shadows.
-- The visible head clone is placed on the `HiddenMesh` layer and is culled from first-person cameras.
+建议处理方式：
 
-## First Load Checklist
+1. 先等待 Unity Package Manager 完成所有包下载和导入。
+2. 打开 Meta XR Project Setup Tool。
+3. 如果仍有配置警告，点击 `Fix All`。
+4. 完成后再进入 Play Mode 测试。
 
-1. Open the project with Unity `2022.3.9f1`.
-2. Make sure VPN/network access is available before Unity resolves packages.
-3. Wait for Unity Package Manager to finish importing all packages.
-4. Open `Assets/Scenes/JapaneseStreetVR.unity`.
-5. Connect Quest / Quest Link and ensure the Meta XR runtime is active.
-6. Enter Play Mode and test:
-   - thumbstick movement
-   - head and hand tracking
-   - BlackFullBody visibility while moving
-   - foot orientation while turning
-   - first-person head hiding and head shadow
+如果包还没有导入完成就立即运行 `Fix All`，部分提示可能会反复出现。优先确认网络和依赖包下载正常。
 
-## Notes
+## 当前角色控制结构
 
-- If the scene opens with missing packages, fix package download/network issues first before changing scene objects.
-- If tracking stops working, check Meta XR runtime status and body tracking settings before modifying the character rig.
-- If black screen or hourglass appears after editing the character, verify that `BlackFullBody` RigBuilder has not been re-enabled.
-- If the body disappears after moving, check that `BlackFullBodySkinnedMeshCullingFix` is still attached and enabled.
-- If ankles twist while turning, check that the deformation setting `_alignFeetWeight` remains `0`.
+当前启用的角色是 `BlackFullBody`，它使用 Meta Movement retargeting 和摇杆 locomotion。
+
+关键结构：
+
+- `PlayerController` 通过 `MovementSDKLocomotion` 负责移动。
+- `OVRCameraRig` 位于 `PlayerController` 下，使玩家视角跟随 locomotion。
+- `MovementSdkOvrThumbstickInput` 读取 OVR 摇杆输入，并写入 `MovementSDKLocomotion.UserInput`。
+- `BlackFullBody` 使用 full-body retargeting。
+- `BlackFullBody` 上的 `RigBuilder` 是故意禁用的。除非明确要重做 retargeting 流程，否则不要重新启用。
+- `BlackFullBody` 使用独立的 locomotion skeleton processor，避免和官方 sample body 抢占同一套 processor 资源。
+
+## 当前版本保留的关键修复
+
+- `JapaneseStreetVR` 中的身体跟踪和摇杆移动可以同时工作。
+- `BlackFullBodySkinnedMeshCullingFix` 用于扩大 skinned mesh bounds，避免角色移动一段距离后被错误剔除而消失。
+- 脚部 deformation alignment 已关闭，关键配置为 `_alignFeetWeight: 0`，用于避免转身时脚腕异常扭曲。
+- 第一人称头部隐藏由 `BlackFullBodyFirstPersonHeadHider` 实现。
+- `FirstPersonNoDraw` 会让第一人称相机看不到头部，同时保留 ShadowCaster pass，使头部仍能投射阴影。
+- 可见头部克隆体位于 `HiddenMesh` layer，并会被第一人称相机剔除。
+
+## 注意事项
+
+- 如果场景打开后显示缺少 package，请先解决网络和包下载问题，不要急着修改场景对象。
+- 如果头显或手柄跟踪失效，优先检查 Meta XR runtime、Quest / Link 连接状态和 body tracking 设置。
+- 如果进入 Play Mode 后出现黑屏或小沙漏，检查 `BlackFullBody` 的 `RigBuilder` 是否被重新启用。
+- 如果角色移动后身体消失，检查 `BlackFullBodySkinnedMeshCullingFix` 是否仍然挂载并启用。
+- 如果转身时脚腕扭曲，检查 deformation 配置中的 `_alignFeetWeight` 是否仍为 `0`。
+- 不建议把 `Library/` 缓存提交到 git。它体积很大，而且依赖本机 Unity 环境；fresh clone 后让 Unity 重新下载和导入依赖包更稳定。
 
