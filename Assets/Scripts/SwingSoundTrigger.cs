@@ -1,17 +1,13 @@
 using UnityEngine;
 
+[RequireComponent(typeof(AudioSource))]
 [DisallowMultipleComponent]
 public sealed class SwingSoundTrigger : MonoBehaviour
 {
-    [Header("Tracked Hands")]
-    [SerializeField] private Transform leftTrackedTransform;
-    [SerializeField] private Transform rightTrackedTransform;
-
     [Header("Audio")]
     [SerializeField] private AudioClip swingClip;
     [SerializeField] private AudioClip gripClip;
     [SerializeField, Range(0.0f, 1.0f)] private float volume = 1.0f;
-    [SerializeField, Range(0.0f, 1.0f)] private float spatialBlend = 0.0f;
 
     [Header("Swing")]
     [SerializeField, Min(0.1f)] private float swingSpeedThreshold = 2.6f;
@@ -22,9 +18,6 @@ public sealed class SwingSoundTrigger : MonoBehaviour
     [SerializeField, Min(0.0f)] private float gripCooldown = 1.0f;
 
     private AudioSource audioSource;
-    private Vector3 lastLeftPosition;
-    private Vector3 lastRightPosition;
-    private bool hasLastPositions;
     private bool wasFourTriggerGripHeld;
     private float nextSwingTime;
     private float nextGripTime;
@@ -34,16 +27,16 @@ public sealed class SwingSoundTrigger : MonoBehaviour
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
         {
-            audioSource = gameObject.AddComponent<AudioSource>();
+            enabled = false;
+            return;
         }
 
         audioSource.playOnAwake = false;
-        audioSource.spatialBlend = spatialBlend;
+        audioSource.spatialBlend = 0.0f;
     }
 
     private void OnEnable()
     {
-        hasLastPositions = false;
         wasFourTriggerGripHeld = false;
         nextSwingTime = 0.0f;
         nextGripTime = 0.0f;
@@ -57,29 +50,20 @@ public sealed class SwingSoundTrigger : MonoBehaviour
 
     private void CheckSwing()
     {
-        if (leftTrackedTransform == null || rightTrackedTransform == null)
+        if (Time.time < nextSwingTime)
         {
             return;
         }
 
-        var leftPosition = leftTrackedTransform.position;
-        var rightPosition = rightTrackedTransform.position;
-        var deltaTime = Time.deltaTime;
-
-        if (hasLastPositions && deltaTime > Mathf.Epsilon && Time.time >= nextSwingTime)
+        var leftSpeed = OVRInput.GetLocalControllerVelocity(OVRInput.Controller.LTouch).magnitude;
+        var rightSpeed = OVRInput.GetLocalControllerVelocity(OVRInput.Controller.RTouch).magnitude;
+        if (leftSpeed < swingSpeedThreshold && rightSpeed < swingSpeedThreshold)
         {
-            var leftSpeed = Vector3.Distance(leftPosition, lastLeftPosition) / deltaTime;
-            var rightSpeed = Vector3.Distance(rightPosition, lastRightPosition) / deltaTime;
-            if (leftSpeed >= swingSpeedThreshold || rightSpeed >= swingSpeedThreshold)
-            {
-                PlayClip(swingClip, leftSpeed >= rightSpeed ? leftPosition : rightPosition);
-                nextSwingTime = Time.time + swingCooldown;
-            }
+            return;
         }
 
-        lastLeftPosition = leftPosition;
-        lastRightPosition = rightPosition;
-        hasLastPositions = true;
+        PlayClip(swingClip);
+        nextSwingTime = Time.time + swingCooldown;
     }
 
     private void CheckFourTriggerGrip()
@@ -92,7 +76,7 @@ public sealed class SwingSoundTrigger : MonoBehaviour
 
         if (fourTriggerGripHeld && !wasFourTriggerGripHeld && Time.time >= nextGripTime)
         {
-            PlayClip(gripClip, GetCenterPosition());
+            PlayClip(gripClip);
             nextGripTime = Time.time + gripCooldown;
         }
 
@@ -104,41 +88,13 @@ public sealed class SwingSoundTrigger : MonoBehaviour
         return OVRInput.Get(axis) >= triggerPressedThreshold;
     }
 
-    private Vector3 GetCenterPosition()
+    private void PlayClip(AudioClip clip)
     {
-        if (leftTrackedTransform != null && rightTrackedTransform != null)
-        {
-            return (leftTrackedTransform.position + rightTrackedTransform.position) * 0.5f;
-        }
-
-        return transform.position;
-    }
-
-    private void PlayClip(AudioClip clip, Vector3 position)
-    {
-        if (clip == null)
+        if (clip == null || audioSource == null)
         {
             return;
         }
 
-        if (spatialBlend > 0.0f)
-        {
-            var oneShot = new GameObject($"{clip.name}_OneShot");
-            oneShot.transform.position = position;
-            var source = oneShot.AddComponent<AudioSource>();
-            source.spatialBlend = spatialBlend;
-            source.volume = volume;
-            source.PlayOneShot(clip);
-            Destroy(oneShot, clip.length + 0.1f);
-            return;
-        }
-
-        if (audioSource == null)
-        {
-            return;
-        }
-
-        audioSource.spatialBlend = spatialBlend;
         audioSource.PlayOneShot(clip, volume);
     }
 }
