@@ -13,11 +13,13 @@ public sealed class VoiceKeywordSoundTrigger : MonoBehaviour
     [SerializeField, Range(0.0f, 1.0f)] private float volume = 1.0f;
 
     [Header("Keywords")]
+    [SerializeField] private bool startAutomatically;
     [SerializeField] private string[] keywords = { "henshin", "hen shin" };
     [SerializeField, Min(0.0f)] private float cooldown = 2.0f;
 
     private AudioSource audioSource;
     private float nextTriggerTime;
+    private bool isListening;
 
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
     private KeywordRecognizer keywordRecognizer;
@@ -41,21 +43,24 @@ public sealed class VoiceKeywordSoundTrigger : MonoBehaviour
         nextTriggerTime = 0.0f;
 
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        StartRecognizer();
+        if (startAutomatically)
+        {
+            StartListening();
+        }
 #endif
     }
 
     private void OnDisable()
     {
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        StopRecognizer();
+        StopListening();
 #endif
     }
 
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-    private void StartRecognizer()
+    public void StartListening()
     {
-        if (keywordRecognizer != null)
+        if (isListening || keywordRecognizer != null)
         {
             return;
         }
@@ -72,17 +77,20 @@ public sealed class VoiceKeywordSoundTrigger : MonoBehaviour
             keywordRecognizer = new KeywordRecognizer(validKeywords);
             keywordRecognizer.OnPhraseRecognized += OnPhraseRecognized;
             keywordRecognizer.Start();
+            isListening = true;
         }
         catch (System.Exception exception)
         {
             Debug.LogWarning($"Voice keyword recognition failed to start: {exception.Message}", this);
-            StopRecognizer();
+            StopListening();
             enabled = false;
         }
     }
 
-    private void StopRecognizer()
+    public void StopListening()
     {
+        isListening = false;
+
         if (keywordRecognizer == null)
         {
             return;
