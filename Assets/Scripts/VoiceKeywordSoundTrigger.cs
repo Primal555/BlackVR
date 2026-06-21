@@ -1,9 +1,5 @@
 using UnityEngine;
 
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-using UnityEngine.Windows.Speech;
-#endif
-
 [RequireComponent(typeof(AudioSource))]
 [DisallowMultipleComponent]
 public sealed class VoiceKeywordSoundTrigger : MonoBehaviour
@@ -12,18 +8,7 @@ public sealed class VoiceKeywordSoundTrigger : MonoBehaviour
     [SerializeField] private AudioClip henshinClip;
     [SerializeField, Range(0.0f, 1.0f)] private float volume = 1.0f;
 
-    [Header("Keywords")]
-    [SerializeField] private bool startAutomatically;
-    [SerializeField] private string[] keywords = { "henshin", "hen shin" };
-    [SerializeField, Min(0.0f)] private float cooldown = 2.0f;
-
     private AudioSource audioSource;
-    private float nextTriggerTime;
-    private bool isListening;
-
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-    private KeywordRecognizer keywordRecognizer;
-#endif
 
     private void Awake()
     {
@@ -38,107 +23,7 @@ public sealed class VoiceKeywordSoundTrigger : MonoBehaviour
         audioSource.spatialBlend = 0.0f;
     }
 
-    private void OnEnable()
-    {
-        nextTriggerTime = 0.0f;
-
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        if (startAutomatically)
-        {
-            StartListening();
-        }
-#endif
-    }
-
-    private void OnDisable()
-    {
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        StopListening();
-#endif
-    }
-
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-    public void StartListening()
-    {
-        if (isListening || keywordRecognizer != null)
-        {
-            return;
-        }
-
-        var validKeywords = GetValidKeywords();
-        if (validKeywords.Length == 0)
-        {
-            enabled = false;
-            return;
-        }
-
-        try
-        {
-            keywordRecognizer = new KeywordRecognizer(validKeywords);
-            keywordRecognizer.OnPhraseRecognized += OnPhraseRecognized;
-            keywordRecognizer.Start();
-            isListening = true;
-        }
-        catch (System.Exception exception)
-        {
-            Debug.LogWarning($"Voice keyword recognition failed to start: {exception.Message}", this);
-            StopListening();
-            enabled = false;
-        }
-    }
-
-    public void StopListening()
-    {
-        isListening = false;
-
-        if (keywordRecognizer == null)
-        {
-            return;
-        }
-
-        keywordRecognizer.OnPhraseRecognized -= OnPhraseRecognized;
-        if (keywordRecognizer.IsRunning)
-        {
-            keywordRecognizer.Stop();
-        }
-
-        keywordRecognizer.Dispose();
-        keywordRecognizer = null;
-    }
-
-    private string[] GetValidKeywords()
-    {
-        if (keywords == null || keywords.Length == 0)
-        {
-            return new[] { "henshin" };
-        }
-
-        var validKeywords = new System.Collections.Generic.List<string>(keywords.Length);
-        for (var i = 0; i < keywords.Length; i++)
-        {
-            var keyword = keywords[i];
-            if (!string.IsNullOrWhiteSpace(keyword) && !validKeywords.Contains(keyword))
-            {
-                validKeywords.Add(keyword);
-            }
-        }
-
-        return validKeywords.ToArray();
-    }
-
-    private void OnPhraseRecognized(PhraseRecognizedEventArgs args)
-    {
-        if (Time.time < nextTriggerTime)
-        {
-            return;
-        }
-
-        PlayHenshinClip();
-        nextTriggerTime = Time.time + cooldown;
-    }
-#endif
-
-    private void PlayHenshinClip()
+    public void TriggerHenshin()
     {
         if (henshinClip == null || audioSource == null)
         {
