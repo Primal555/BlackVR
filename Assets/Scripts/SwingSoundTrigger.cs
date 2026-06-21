@@ -72,8 +72,7 @@ public sealed class SwingSoundTrigger : MonoBehaviour
             var rightSpeed = Vector3.Distance(rightPosition, lastRightPosition) / deltaTime;
             if (leftSpeed >= swingSpeedThreshold || rightSpeed >= swingSpeedThreshold)
             {
-                var soundPosition = leftSpeed >= rightSpeed ? leftPosition : rightPosition;
-                PlayClip(swingClip, soundPosition);
+                PlayClip(swingClip, leftSpeed >= rightSpeed ? leftPosition : rightPosition);
                 nextSwingTime = Time.time + swingCooldown;
             }
         }
@@ -117,12 +116,28 @@ public sealed class SwingSoundTrigger : MonoBehaviour
 
     private void PlayClip(AudioClip clip, Vector3 position)
     {
-        if (clip == null || audioSource == null)
+        if (clip == null)
         {
             return;
         }
 
-        audioSource.transform.position = position;
+        if (spatialBlend > 0.0f)
+        {
+            var oneShot = new GameObject($"{clip.name}_OneShot");
+            oneShot.transform.position = position;
+            var source = oneShot.AddComponent<AudioSource>();
+            source.spatialBlend = spatialBlend;
+            source.volume = volume;
+            source.PlayOneShot(clip);
+            Destroy(oneShot, clip.length + 0.1f);
+            return;
+        }
+
+        if (audioSource == null)
+        {
+            return;
+        }
+
         audioSource.spatialBlend = spatialBlend;
         audioSource.PlayOneShot(clip, volume);
     }
