@@ -38,6 +38,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         CacheOriginalRendererStates();
+        KeepAnimationSystemsRunningWhileHidden();
     }
 
     private void OnEnable()
@@ -193,5 +194,44 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     private bool GetOriginalRendererState(Renderer target)
     {
         return !originalRendererStates.TryGetValue(target, out var enabled) || enabled;
+    }
+
+    private void KeepAnimationSystemsRunningWhileHidden()
+    {
+        KeepAnimationSystemsRunningWhileHidden(beforeModels);
+        KeepAnimationSystemsRunningWhileHidden(transformedModel);
+    }
+
+    private void KeepAnimationSystemsRunningWhileHidden(GameObject[] targets)
+    {
+        if (targets == null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < targets.Length; i++)
+        {
+            KeepAnimationSystemsRunningWhileHidden(targets[i]);
+        }
+    }
+
+    private void KeepAnimationSystemsRunningWhileHidden(GameObject target)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        var animators = target.GetComponentsInChildren<Animator>(true);
+        for (var i = 0; i < animators.Length; i++)
+        {
+            animators[i].cullingMode = AnimatorCullingMode.AlwaysAnimate;
+        }
+
+        var skinnedMeshRenderers = target.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+        for (var i = 0; i < skinnedMeshRenderers.Length; i++)
+        {
+            skinnedMeshRenderers[i].updateWhenOffscreen = true;
+        }
     }
 }
