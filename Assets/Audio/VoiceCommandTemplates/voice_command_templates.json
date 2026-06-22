@@ -1,0 +1,34 @@
+{
+    "entries": [
+        {
+            "commandName": "black变身音效",
+            "effectAudioPath": "Assets/Audio/BlackDenoised/black变身音效.wav",
+            "templateAudioPath": "Assets/Audio/VoiceCommandTemplates/black变身音效_template.wav"
+        },
+        {
+            "commandName": "帝王石闪光",
+            "effectAudioPath": "Assets/Audio/BlackDenoised/帝王石闪光.wav",
+            "templateAudioPath": "Assets/Audio/VoiceCommandTemplates/帝王石闪光_template.wav"
+        },
+        {
+            "commandName": "战斗蝗虫",
+            "effectAudioPath": "Assets/Audio/BlackDenoised/战斗蝗虫.wav",
+            "templateAudioPath": "Assets/Audio/VoiceCommandTemplates/战斗蝗虫_template.wav"
+        },
+        {
+            "commandName": "战斗飞鹰",
+            "effectAudioPath": "Assets/Audio/BlackDenoised/战斗飞鹰.wav",
+            "templateAudioPath": "Assets/Audio/VoiceCommandTemplates/战斗飞鹰_template.wav"
+        },
+        {
+            "commandName": "骑士拳",
+            "effectAudioPath": "Assets/Audio/BlackDenoised/骑士拳.wav",
+            "templateAudioPath": "Assets/Audio/VoiceCommandTemplates/骑士拳_template.wav"
+        },
+        {
+            "commandName": "骑士踢",
+            "effectAudioPath": "Assets/Audio/BlackDenoised/骑士踢.wav",
+            "templateAudioPath": "Assets/Audio/VoiceCommandTemplates/骑士踢_template.wav"
+        }
+    ]
+}
