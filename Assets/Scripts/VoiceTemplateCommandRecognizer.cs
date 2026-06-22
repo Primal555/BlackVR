@@ -43,7 +43,7 @@ public sealed class VoiceTemplateCommandRecognizer : MonoBehaviour
     [SerializeField, Range(0.1f, 5.0f)] private float recognitionCooldownSeconds = 1.0f;
 
     [Header("Matching")]
-    [SerializeField, Range(0.0f, 1.0f)] private float defaultMinSimilarity = 0.5f;
+    [SerializeField, Range(0.0f, 1.0f)] private float defaultMinSimilarity = 0.65f;
     [SerializeField] private bool logRecognition = true;
     [SerializeField] private VoiceCommand[] commands = Array.Empty<VoiceCommand>();
 
