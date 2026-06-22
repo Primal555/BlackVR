@@ -24,14 +24,23 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField] private bool applyInitialVisibilityOnStart;
     [SerializeField] private bool startTransformed;
 
+    [Header("Manual Reset")]
+    [SerializeField] private bool enableLeftYReset = true;
+    [SerializeField] private AudioClip resetClip;
+    [SerializeField, Range(0.0f, 1.0f)] private float resetVolume = 1.0f;
+
     [Header("Extension Events")]
     [SerializeField] private UnityEvent onTransformed;
+    [SerializeField] private UnityEvent onResetToBefore;
 
+    private AudioSource audioSource;
     private bool isTransformed;
     private readonly Dictionary<Renderer, bool> originalRendererStates = new Dictionary<Renderer, bool>();
 
     private void Awake()
     {
+        audioSource = GetComponent<AudioSource>();
+
         if (recognizer == null)
         {
             recognizer = GetComponent<VoiceTemplateCommandRecognizer>();
@@ -61,6 +70,19 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
     }
 
+    private void Update()
+    {
+        if (!enableLeftYReset || !isTransformed)
+        {
+            return;
+        }
+
+        if (OVRInput.GetDown(OVRInput.Button.Four, OVRInput.Controller.LTouch))
+        {
+            ResetToBeforeWithEffect();
+        }
+    }
+
     private void OnDisable()
     {
         if (recognizer != null)
@@ -84,6 +106,17 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         SetTransformedState(false, invokeEvents: false);
     }
 
+    public void ResetToBeforeWithEffect()
+    {
+        if (!isTransformed)
+        {
+            return;
+        }
+
+        PlayResetClip();
+        SetTransformedState(false, invokeEvents: true);
+    }
+
     private void HandleCommandRecognized(string recognizedCommandId)
     {
         if (!string.Equals(recognizedCommandId, commandId, StringComparison.Ordinal))
@@ -105,10 +138,28 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
         SetVisible(transformedModel, transformed);
 
-        if (transformed && invokeEvents)
+        if (!invokeEvents)
+        {
+            return;
+        }
+
+        if (transformed)
         {
             onTransformed?.Invoke();
+            return;
         }
+
+        onResetToBefore?.Invoke();
+    }
+
+    private void PlayResetClip()
+    {
+        if (resetClip == null || audioSource == null)
+        {
+            return;
+        }
+
+        audioSource.PlayOneShot(resetClip, resetVolume);
     }
 
     private void SetVisible(GameObject target, bool visible)
