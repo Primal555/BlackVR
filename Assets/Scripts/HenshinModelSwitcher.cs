@@ -77,7 +77,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             return;
         }
 
-        if (OVRInput.GetDown(OVRInput.Button.Four, OVRInput.Controller.LTouch))
+        if (IsLeftYPressedThisFrame())
         {
             ResetToBeforeWithEffect();
         }
@@ -160,6 +160,12 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         audioSource.PlayOneShot(resetClip, resetVolume);
+    }
+
+    private static bool IsLeftYPressedThisFrame()
+    {
+        return OVRInput.GetDown(OVRInput.RawButton.Y, OVRInput.Controller.LTouch) ||
+               OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.LTouch);
     }
 
     private void SetVisible(GameObject target, bool visible)
