@@ -40,6 +40,15 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField, Range(0.5f, 1.5f)] private float previewEndScale = 1.0f;
     [SerializeField, Range(0, 10)] private int previewTrackingWarmupFrames = 3;
     [SerializeField, Range(0.05f, 1.0f)] private float previewFadeDurationRatio = 0.55f;
+    [SerializeField] private bool enableBeltReveal = true;
+    [SerializeField] private Material beltRevealMaterial;
+    [SerializeField] private string beltMaterialKeywords = "本体,metalg,metal,アーマー";
+    [SerializeField] private string beltCenterMaterialKeywords = "ファン";
+    [SerializeField, Range(0.01f, 0.5f)] private float beltCenterDurationRatio = 0.12f;
+    [SerializeField, Range(0.05f, 0.75f)] private float beltExpandDurationRatio = 0.28f;
+    [SerializeField, Range(0.01f, 0.5f)] private float beltRevealEdgeWidth = 0.08f;
+    [SerializeField, ColorUsage(true, true)] private Color beltRevealGlowColor = new Color(1.0f, 0.05f, 0.0f, 1.0f);
+    [SerializeField, Range(0.0f, 8.0f)] private float beltRevealGlowIntensity = 2.5f;
     [SerializeField] private bool enableWhiteOutlineSweep = true;
     [SerializeField] private Material outlineSweepMaterial;
     [SerializeField, ColorUsage(true, true)] private Color outlineSweepColor = Color.white;
@@ -62,8 +71,16 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     private GameObject activeSequencePreviewModel;
     private readonly Dictionary<Renderer, bool> originalRendererStates = new Dictionary<Renderer, bool>();
     private readonly List<RendererMaterialState> previewRendererMaterialStates = new List<RendererMaterialState>();
+    private readonly List<PreviewMaterialState> previewMaterialStates = new List<PreviewMaterialState>();
     private readonly List<Material> previewMaterials = new List<Material>();
     private readonly List<OutlineMaterialState> outlineMaterials = new List<OutlineMaterialState>();
+
+    private enum PreviewMaterialRole
+    {
+        Body,
+        Belt,
+        BeltCenter
+    }
 
     private readonly struct RendererMaterialState
     {
@@ -90,6 +107,18 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             SourceRenderer = sourceRenderer;
             OutlineObject = outlineObject;
             Material = material;
+        }
+    }
+
+    private readonly struct PreviewMaterialState
+    {
+        public readonly Material Material;
+        public readonly PreviewMaterialRole Role;
+
+        public PreviewMaterialState(Material material, PreviewMaterialRole role)
+        {
+            Material = material;
+            Role = role;
         }
     }
 
@@ -256,25 +285,21 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         SetSequencePreviewRenderersVisible(true);
 
         var remainingDuration = GetRemainingHenshinSequenceDuration(Time.time - sequenceStartTime);
-        var fadeDuration = Mathf.Clamp(
-            remainingDuration * previewFadeDurationRatio,
-            0.01f,
-            remainingDuration);
-        var outlineDuration = Mathf.Max(0.0f, remainingDuration - fadeDuration);
-        var elapsed = 0.0f;
-
-        while (elapsed < fadeDuration)
+        if (enableBeltReveal)
         {
-            elapsed += Time.deltaTime;
-            var normalizedTime = Mathf.Clamp01(elapsed / fadeDuration);
-            var easedTime = Mathf.SmoothStep(0.0f, 1.0f, normalizedTime);
-
-            UpdatePreview(easedTime);
-            yield return null;
+            yield return RunBeltRevealSequence(remainingDuration);
         }
+        else
+        {
+            var fadeDuration = Mathf.Clamp(
+                remainingDuration * previewFadeDurationRatio,
+                0.01f,
+                remainingDuration);
+            var outlineDuration = Mathf.Max(0.0f, remainingDuration - fadeDuration);
 
-        UpdatePreview(1.0f);
-        yield return RunOutlineSweep(outlineDuration);
+            yield return RunPreviewBodyFade(fadeDuration);
+            yield return RunOutlineSweep(outlineDuration);
+        }
 
         EndSequencePreview(restoreVisibility: false);
         SetTransformedState(true, invokeEvents: true);
@@ -316,7 +341,9 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         sequencePreviewOriginalScale = activeSequencePreviewModel.transform.localScale;
-        activeSequencePreviewModel.transform.localScale = sequencePreviewOriginalScale * previewStartScale;
+        activeSequencePreviewModel.transform.localScale = enableBeltReveal
+            ? sequencePreviewOriginalScale
+            : sequencePreviewOriginalScale * previewStartScale;
         CachePreviewMaterials(activeSequencePreviewModel);
         SetPreviewAlpha(0.0f);
         SetSequencePreviewRenderersVisible(false);
@@ -329,8 +356,12 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             return;
         }
 
-        activeSequencePreviewModel.transform.localScale =
-            sequencePreviewOriginalScale * Mathf.Lerp(previewStartScale, previewEndScale, normalizedTime);
+        if (!enableBeltReveal)
+        {
+            activeSequencePreviewModel.transform.localScale =
+                sequencePreviewOriginalScale * Mathf.Lerp(previewStartScale, previewEndScale, normalizedTime);
+        }
+
         SetPreviewAlpha(normalizedTime);
     }
 
@@ -374,6 +405,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         previewMaterials.Clear();
+        previewMaterialStates.Clear();
 
         for (var i = 0; i < outlineMaterials.Count; i++)
         {
@@ -409,15 +441,46 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
                     continue;
                 }
 
-                var previewMaterial = new Material(originalMaterials[materialIndex]);
-                ConfigurePreviewMaterial(previewMaterial);
+                var role = GetPreviewMaterialRole(originalMaterials[materialIndex]);
+                var previewMaterial = CreatePreviewMaterial(originalMaterials[materialIndex], targetRenderer, role);
                 previewMaterialArray[materialIndex] = previewMaterial;
                 previewMaterials.Add(previewMaterial);
+                previewMaterialStates.Add(new PreviewMaterialState(previewMaterial, role));
             }
 
             targetRenderer.sharedMaterials = previewMaterialArray;
             CreateOutlineRenderer(targetRenderer);
         }
+    }
+
+    private Material CreatePreviewMaterial(Material sourceMaterial, Renderer targetRenderer, PreviewMaterialRole role)
+    {
+        if (enableBeltReveal && role != PreviewMaterialRole.Body)
+        {
+            return CreateBeltRevealMaterial(sourceMaterial, targetRenderer);
+        }
+
+        var previewMaterial = new Material(sourceMaterial);
+        ConfigurePreviewMaterial(previewMaterial);
+        return previewMaterial;
+    }
+
+    private Material CreateBeltRevealMaterial(Material sourceMaterial, Renderer targetRenderer)
+    {
+        Material material;
+        if (beltRevealMaterial != null)
+        {
+            material = new Material(beltRevealMaterial);
+        }
+        else
+        {
+            var shader = Shader.Find("KamenRider/HenshinBeltReveal");
+            material = shader != null ? new Material(shader) : new Material(sourceMaterial);
+        }
+
+        CopyBaseMaterialProperties(sourceMaterial, material);
+        ConfigureBeltRevealMaterial(material, targetRenderer, alpha: 0.0f, revealProgress: 0.0f);
+        return material;
     }
 
     private void CreateOutlineRenderer(Renderer sourceRenderer)
@@ -550,6 +613,65 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         ClearPreviewOutlineSweep();
     }
 
+    private IEnumerator RunBeltRevealSequence(float remainingDuration)
+    {
+        SetBeltRevealState(centerAlpha: 1.0f, beltReveal: 0.0f);
+        SetBodyPreviewAlpha(0.0f);
+
+        var centerDuration = remainingDuration * beltCenterDurationRatio;
+        var expandDuration = remainingDuration * beltExpandDurationRatio;
+        var bodyFadeDuration = Mathf.Clamp(
+            remainingDuration * previewFadeDurationRatio,
+            0.01f,
+            remainingDuration);
+
+        yield return RunTimedPhase(centerDuration, t =>
+        {
+            SetBeltRevealState(centerAlpha: Mathf.SmoothStep(0.0f, 1.0f, t), beltReveal: 0.0f);
+            SetBodyPreviewAlpha(0.0f);
+        });
+
+        yield return RunTimedPhase(expandDuration, t =>
+        {
+            SetBeltRevealState(centerAlpha: 1.0f, beltReveal: Mathf.SmoothStep(0.0f, 1.0f, t));
+            SetBodyPreviewAlpha(0.0f);
+        });
+
+        yield return RunTimedPhase(bodyFadeDuration, t =>
+        {
+            SetBeltRevealState(centerAlpha: 1.0f, beltReveal: 1.0f);
+            SetBodyPreviewAlpha(Mathf.SmoothStep(0.0f, 1.0f, t));
+        });
+
+        SetBeltRevealState(centerAlpha: 1.0f, beltReveal: 1.0f);
+        SetBodyPreviewAlpha(1.0f);
+    }
+
+    private IEnumerator RunPreviewBodyFade(float duration)
+    {
+        yield return RunTimedPhase(duration, t =>
+        {
+            var easedTime = Mathf.SmoothStep(0.0f, 1.0f, t);
+            UpdatePreview(easedTime);
+        });
+
+        UpdatePreview(1.0f);
+    }
+
+    private static IEnumerator RunTimedPhase(float duration, Action<float> update)
+    {
+        duration = Mathf.Max(0.01f, duration);
+        var elapsed = 0.0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            update?.Invoke(Mathf.Clamp01(elapsed / duration));
+            yield return null;
+        }
+
+        update?.Invoke(1.0f);
+    }
+
     private void UpdatePreviewOutlineSweep(float elapsed)
     {
         var materialCount = outlineMaterials.Count;
@@ -639,6 +761,105 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         material.renderQueue = (int)RenderQueue.Transparent;
     }
 
+    private static void CopyBaseMaterialProperties(Material sourceMaterial, Material targetMaterial)
+    {
+        if (sourceMaterial == null || targetMaterial == null)
+        {
+            return;
+        }
+
+        if (targetMaterial.HasProperty("_BaseMap"))
+        {
+            if (sourceMaterial.HasProperty("_BaseMap"))
+            {
+                targetMaterial.SetTexture("_BaseMap", sourceMaterial.GetTexture("_BaseMap"));
+                targetMaterial.SetTextureScale("_BaseMap", sourceMaterial.GetTextureScale("_BaseMap"));
+                targetMaterial.SetTextureOffset("_BaseMap", sourceMaterial.GetTextureOffset("_BaseMap"));
+            }
+            else if (sourceMaterial.HasProperty("_MainTex"))
+            {
+                targetMaterial.SetTexture("_BaseMap", sourceMaterial.GetTexture("_MainTex"));
+                targetMaterial.SetTextureScale("_BaseMap", sourceMaterial.GetTextureScale("_MainTex"));
+                targetMaterial.SetTextureOffset("_BaseMap", sourceMaterial.GetTextureOffset("_MainTex"));
+            }
+        }
+
+        if (targetMaterial.HasProperty("_BaseColor"))
+        {
+            if (sourceMaterial.HasProperty("_BaseColor"))
+            {
+                targetMaterial.SetColor("_BaseColor", sourceMaterial.GetColor("_BaseColor"));
+            }
+            else if (sourceMaterial.HasProperty("_Color"))
+            {
+                targetMaterial.SetColor("_BaseColor", sourceMaterial.GetColor("_Color"));
+            }
+        }
+    }
+
+    private void ConfigureBeltRevealMaterial(Material material, Renderer targetRenderer, float alpha, float revealProgress)
+    {
+        if (material == null || targetRenderer == null)
+        {
+            return;
+        }
+
+        var bounds = GetRendererLocalBounds(targetRenderer);
+        var centerX = bounds.center.x;
+        var halfWidth = Mathf.Max(0.0001f, bounds.extents.x);
+
+        if (material.HasProperty("_Alpha"))
+        {
+            material.SetFloat("_Alpha", alpha);
+        }
+
+        if (material.HasProperty("_RevealProgress"))
+        {
+            material.SetFloat("_RevealProgress", revealProgress);
+        }
+
+        if (material.HasProperty("_CenterX"))
+        {
+            material.SetFloat("_CenterX", centerX);
+        }
+
+        if (material.HasProperty("_HalfWidth"))
+        {
+            material.SetFloat("_HalfWidth", halfWidth);
+        }
+
+        if (material.HasProperty("_EdgeWidth"))
+        {
+            material.SetFloat("_EdgeWidth", beltRevealEdgeWidth);
+        }
+
+        if (material.HasProperty("_GlowColor"))
+        {
+            material.SetColor("_GlowColor", beltRevealGlowColor);
+        }
+
+        if (material.HasProperty("_GlowIntensity"))
+        {
+            material.SetFloat("_GlowIntensity", beltRevealGlowIntensity);
+        }
+    }
+
+    private static Bounds GetRendererLocalBounds(Renderer targetRenderer)
+    {
+        if (targetRenderer is SkinnedMeshRenderer skinnedMeshRenderer)
+        {
+            return skinnedMeshRenderer.localBounds;
+        }
+
+        var meshFilter = targetRenderer.GetComponent<MeshFilter>();
+        if (meshFilter != null && meshFilter.sharedMesh != null)
+        {
+            return meshFilter.sharedMesh.bounds;
+        }
+
+        return new Bounds(Vector3.zero, Vector3.one);
+    }
+
     private void ConfigureOutlineMaterial(Material material, Renderer targetRenderer, float alpha, float sweepProgress)
     {
         if (material == null || targetRenderer == null)
@@ -690,9 +911,72 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
     private void SetPreviewAlpha(float alpha)
     {
-        for (var i = 0; i < previewMaterials.Count; i++)
+        for (var i = 0; i < previewMaterialStates.Count; i++)
         {
-            SetMaterialAlpha(previewMaterials[i], alpha);
+            var state = previewMaterialStates[i];
+            if (enableBeltReveal && state.Role != PreviewMaterialRole.Body)
+            {
+                ConfigureBeltPreviewAlpha(state.Material, state.Role, alpha);
+                continue;
+            }
+
+            SetMaterialAlpha(state.Material, alpha);
+        }
+    }
+
+    private void SetBodyPreviewAlpha(float alpha)
+    {
+        for (var i = 0; i < previewMaterialStates.Count; i++)
+        {
+            var state = previewMaterialStates[i];
+            if (state.Role == PreviewMaterialRole.Body)
+            {
+                SetMaterialAlpha(state.Material, alpha);
+            }
+        }
+    }
+
+    private void SetBeltRevealState(float centerAlpha, float beltReveal)
+    {
+        for (var i = 0; i < previewMaterialStates.Count; i++)
+        {
+            var state = previewMaterialStates[i];
+            if (state.Role == PreviewMaterialRole.BeltCenter)
+            {
+                ConfigureBeltPreviewAlpha(state.Material, state.Role, centerAlpha);
+                SetBeltRevealProgress(state.Material, 1.0f);
+            }
+            else if (state.Role == PreviewMaterialRole.Belt)
+            {
+                ConfigureBeltPreviewAlpha(state.Material, state.Role, beltReveal > 0.0f ? 1.0f : 0.0f);
+                SetBeltRevealProgress(state.Material, beltReveal);
+            }
+        }
+    }
+
+    private static void ConfigureBeltPreviewAlpha(Material material, PreviewMaterialRole role, float alpha)
+    {
+        if (material == null)
+        {
+            return;
+        }
+
+        if (material.HasProperty("_Alpha"))
+        {
+            material.SetFloat("_Alpha", alpha);
+        }
+
+        if (role == PreviewMaterialRole.BeltCenter && material.HasProperty("_RevealProgress"))
+        {
+            material.SetFloat("_RevealProgress", 1.0f);
+        }
+    }
+
+    private static void SetBeltRevealProgress(Material material, float revealProgress)
+    {
+        if (material != null && material.HasProperty("_RevealProgress"))
+        {
+            material.SetFloat("_RevealProgress", revealProgress);
         }
     }
 
@@ -716,6 +1000,70 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             color.a = alpha;
             material.SetColor("_Color", color);
         }
+    }
+
+    private PreviewMaterialRole GetPreviewMaterialRole(Material material)
+    {
+        if (!enableBeltReveal || material == null)
+        {
+            return PreviewMaterialRole.Body;
+        }
+
+        var lookupText = GetMaterialLookupText(material);
+        if (MatchesAnyKeyword(lookupText, beltCenterMaterialKeywords))
+        {
+            return PreviewMaterialRole.BeltCenter;
+        }
+
+        if (MatchesAnyKeyword(lookupText, beltMaterialKeywords))
+        {
+            return PreviewMaterialRole.Belt;
+        }
+
+        return PreviewMaterialRole.Body;
+    }
+
+    private static string GetMaterialLookupText(Material material)
+    {
+        var lookupText = material.name;
+        AppendTextureName(material, "_BaseMap", ref lookupText);
+        AppendTextureName(material, "_MainTex", ref lookupText);
+        AppendTextureName(material, "_EmissionMap", ref lookupText);
+        return lookupText;
+    }
+
+    private static void AppendTextureName(Material material, string propertyName, ref string lookupText)
+    {
+        if (material == null || !material.HasProperty(propertyName))
+        {
+            return;
+        }
+
+        var texture = material.GetTexture(propertyName);
+        if (texture != null && !string.IsNullOrWhiteSpace(texture.name))
+        {
+            lookupText = $"{lookupText},{texture.name}";
+        }
+    }
+
+    private static bool MatchesAnyKeyword(string value, string keywords)
+    {
+        if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(keywords))
+        {
+            return false;
+        }
+
+        var splitKeywords = keywords.Split(',');
+        for (var i = 0; i < splitKeywords.Length; i++)
+        {
+            var keyword = splitKeywords[i].Trim();
+            if (keyword.Length > 0 && value.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void SetTransformedState(bool transformed, bool invokeEvents)
