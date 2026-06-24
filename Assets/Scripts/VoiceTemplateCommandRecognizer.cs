@@ -351,7 +351,7 @@ public sealed class VoiceTemplateCommandRecognizer : MonoBehaviour
 
     private void DispatchCommand(VoiceCommand command, float score)
     {
-        nextRecognitionAllowedTime = Time.unscaledTime + recognitionCooldownSeconds;
+        nextRecognitionAllowedTime = Time.unscaledTime + GetRecognitionLockoutSeconds(command);
 
         if (logRecognition)
         {
@@ -365,6 +365,19 @@ public sealed class VoiceTemplateCommandRecognizer : MonoBehaviour
 
         command.onRecognized?.Invoke();
         CommandRecognized?.Invoke(command.commandId);
+    }
+
+    private float GetRecognitionLockoutSeconds(VoiceCommand command)
+    {
+        var lockoutSeconds = recognitionCooldownSeconds;
+        if (command != null && command.defaultEffectClip != null)
+        {
+            var pitch = audioSource == null ? 1.0f : Mathf.Abs(audioSource.pitch);
+            var clipDuration = command.defaultEffectClip.length / Mathf.Max(0.01f, pitch);
+            lockoutSeconds = Mathf.Max(lockoutSeconds, clipDuration);
+        }
+
+        return lockoutSeconds;
     }
 
     private string GetMicrophoneDevice()
