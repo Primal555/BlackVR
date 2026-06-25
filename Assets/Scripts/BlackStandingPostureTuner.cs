@@ -14,6 +14,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
     [SerializeField] private Vector3 rightUpperLegEulerOffset;
     [SerializeField] private Vector3 leftShoulderEulerOffset;
     [SerializeField] private Vector3 rightShoulderEulerOffset;
+    [SerializeField] private Vector3 leftShoulderArmorEulerOffset;
+    [SerializeField] private Vector3 rightShoulderArmorEulerOffset;
 
     [Header("Local Position Offsets")]
     [SerializeField] private Vector3 hipsPositionOffset;
@@ -24,6 +26,12 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
     [SerializeField] private Vector3 rightShoulderPositionOffset;
     [SerializeField] private Vector3 leftUpperArmPositionOffset;
     [SerializeField] private Vector3 rightUpperArmPositionOffset;
+    [SerializeField] private Vector3 leftShoulderArmorPositionOffset;
+    [SerializeField] private Vector3 rightShoulderArmorPositionOffset;
+
+    [Header("Named Armor Bones")]
+    [SerializeField] private string leftShoulderArmorBoneName = "肩アーマー.L";
+    [SerializeField] private string rightShoulderArmorBoneName = "肩アーマー.R";
 
     private Animator animator;
     private BoneOffsetState hips;
@@ -34,6 +42,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
     private BoneOffsetState rightShoulder;
     private BoneOffsetState leftUpperArm;
     private BoneOffsetState rightUpperArm;
+    private BoneOffsetState leftShoulderArmor;
+    private BoneOffsetState rightShoulderArmor;
 
     private struct BoneOffsetState
     {
@@ -72,6 +82,14 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         ApplyOffset(ref rightShoulder, rightShoulderEulerOffset, rightShoulderPositionOffset);
         ApplyOffset(ref leftUpperArm, Vector3.zero, leftUpperArmPositionOffset);
         ApplyOffset(ref rightUpperArm, Vector3.zero, rightUpperArmPositionOffset);
+        ApplyOffset(
+            ref leftShoulderArmor,
+            leftShoulderArmorEulerOffset,
+            leftShoulderArmorPositionOffset);
+        ApplyOffset(
+            ref rightShoulderArmor,
+            rightShoulderArmorEulerOffset,
+            rightShoulderArmorPositionOffset);
     }
 
     private void OnDisable()
@@ -99,6 +117,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         rightShoulder.Bone = animator.GetBoneTransform(HumanBodyBones.RightShoulder);
         leftUpperArm.Bone = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
         rightUpperArm.Bone = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+        leftShoulderArmor.Bone = FindChildRecursive(transform, leftShoulderArmorBoneName);
+        rightShoulderArmor.Bone = FindChildRecursive(transform, rightShoulderArmorBoneName);
     }
 
     private void ApplyOffset(
@@ -168,6 +188,32 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         RestoreLastAppliedOffset(ref rightShoulder);
         RestoreLastAppliedOffset(ref leftUpperArm);
         RestoreLastAppliedOffset(ref rightUpperArm);
+        RestoreLastAppliedOffset(ref leftShoulderArmor);
+        RestoreLastAppliedOffset(ref rightShoulderArmor);
+    }
+
+    private static Transform FindChildRecursive(Transform root, string childName)
+    {
+        if (root == null || string.IsNullOrWhiteSpace(childName))
+        {
+            return null;
+        }
+
+        if (root.name == childName)
+        {
+            return root;
+        }
+
+        for (var i = 0; i < root.childCount; i++)
+        {
+            var result = FindChildRecursive(root.GetChild(i), childName);
+            if (result != null)
+            {
+                return result;
+            }
+        }
+
+        return null;
     }
 
     private static void RestoreLastAppliedOffset(ref BoneOffsetState state)
