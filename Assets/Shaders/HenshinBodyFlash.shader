@@ -1,17 +1,17 @@
-Shader "KamenRider/HenshinChestSweep"
+Shader "KamenRider/HenshinBodyFlash"
 {
     Properties
     {
         _BaseMap ("Base Map", 2D) = "white" {}
         _BaseColor ("Base Color", Color) = (1, 1, 1, 1)
-        _CenterX ("Center X", Float) = 0.0
-        _HalfWidth ("Half Width", Float) = 1.0
-        _SweepProgress ("Sweep Progress", Range(0.0, 1.0)) = 0.0
-        _SweepWidth ("Sweep Width", Range(0.01, 0.75)) = 0.22
-        [HDR] _SweepColor ("Sweep Color", Color) = (1, 1, 1, 1)
-        _SweepIntensity ("Sweep Intensity", Range(0.0, 10.0)) = 0.0
+        _BeltCenterWS ("Belt Center WS", Vector) = (0, 0, 0, 0)
+        _MaxDistance ("Max Distance", Float) = 1.0
+        _CollapseProgress ("Collapse Progress", Range(0.0, 1.0)) = 0.0
+        _CollapseBand ("Collapse Band", Range(0.02, 0.45)) = 0.16
         [HDR] _FlashColor ("Flash Color", Color) = (1, 1, 1, 1)
         _FlashIntensity ("Flash Intensity", Range(0.0, 10.0)) = 0.0
+        [HDR] _EyeFlashColor ("Eye Flash Color", Color) = (1, 0, 0, 1)
+        _EyeFlashIntensity ("Eye Flash Intensity", Range(0.0, 10.0)) = 0.0
     }
 
     SubShader
@@ -25,7 +25,7 @@ Shader "KamenRider/HenshinChestSweep"
 
         Pass
         {
-            Name "HenshinChestSweep"
+            Name "HenshinBodyFlash"
             Tags { "LightMode" = "UniversalForward" }
 
             Cull Back
@@ -50,45 +50,44 @@ Shader "KamenRider/HenshinChestSweep"
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
-                float3 positionOS : TEXCOORD0;
+                float3 positionWS : TEXCOORD0;
                 float2 uv : TEXCOORD1;
             };
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseMap_ST;
                 float4 _BaseColor;
-                float _CenterX;
-                float _HalfWidth;
-                float _SweepProgress;
-                float _SweepWidth;
-                float4 _SweepColor;
-                float _SweepIntensity;
+                float4 _BeltCenterWS;
+                float _MaxDistance;
+                float _CollapseProgress;
+                float _CollapseBand;
                 float4 _FlashColor;
                 float _FlashIntensity;
+                float4 _EyeFlashColor;
+                float _EyeFlashIntensity;
             CBUFFER_END
 
             Varyings vert(Attributes input)
             {
                 Varyings output;
-                output.positionOS = input.positionOS.xyz;
+                float3 positionWS = TransformObjectToWorld(input.positionOS.xyz);
+                output.positionWS = positionWS;
                 output.uv = TRANSFORM_TEX(input.uv, _BaseMap);
-                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                output.positionCS = TransformWorldToHClip(positionWS);
                 return output;
             }
 
             half4 frag(Varyings input) : SV_Target
             {
                 half4 baseColor = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv) * _BaseColor;
-                float normalizedX = saturate((input.positionOS.x - (_CenterX - _HalfWidth)) / max(0.0001, _HalfWidth * 2.0));
-                float revealed = 1.0 - smoothstep(_SweepProgress, _SweepProgress + 0.04, normalizedX);
-                float distanceToSweep = abs(normalizedX - _SweepProgress);
-                float leadingEdge = saturate(1.0 - distanceToSweep / max(0.0001, _SweepWidth));
-                leadingEdge = smoothstep(0.0, 1.0, leadingEdge);
-                float sweep = saturate(revealed * 0.45 + leadingEdge);
+                float distanceFromBelt = distance(input.positionWS, _BeltCenterWS.xyz);
+                float normalizedDistance = saturate(distanceFromBelt / max(0.0001, _MaxDistance));
+                float activeRadius = 1.0 - saturate(_CollapseProgress);
+                float collapseMask = 1.0 - smoothstep(activeRadius, activeRadius + max(0.0001, _CollapseBand), normalizedDistance);
 
-                float3 glow = _SweepColor.rgb * (_SweepIntensity * sweep);
-                glow += _FlashColor.rgb * _FlashIntensity;
-                return half4(baseColor.rgb + glow, baseColor.a);
+                float3 flash = _FlashColor.rgb * (_FlashIntensity * collapseMask);
+                flash += _EyeFlashColor.rgb * _EyeFlashIntensity;
+                return half4(baseColor.rgb + flash, baseColor.a);
             }
             ENDHLSL
         }

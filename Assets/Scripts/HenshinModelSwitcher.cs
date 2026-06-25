@@ -66,15 +66,20 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField, Range(8, 72)] private int beltLightRayCount = 32;
     [SerializeField, Range(0.2f, 5.0f)] private float beltLightRayLength = 2.1f;
     [SerializeField, Range(0.002f, 0.12f)] private float beltLightRayWidth = 0.026f;
+    [SerializeField] private Vector3 beltLightLocalOffset = new Vector3(0.0f, 0.14f, 0.02f);
     [SerializeField, ColorUsage(true, true)] private Color beltLightRed = new Color(1.0f, 0.02f, 0.0f, 1.0f);
     [SerializeField, ColorUsage(true, true)] private Color beltLightWhite = new Color(1.0f, 0.95f, 0.85f, 1.0f);
     [SerializeField, Range(0.0f, 12.0f)] private float beltLightIntensity = 5.0f;
     [SerializeField, Range(0.05f, 0.8f)] private float bodyFlashDuration = 0.34f;
     [SerializeField, Range(1, 4)] private int bodyFlashCount = 2;
     [SerializeField, Range(0.0f, 8.0f)] private float bodyFlashIntensity = 3.5f;
+    [SerializeField, Range(0.02f, 0.45f)] private float bodyFlashCollapseBand = 0.16f;
     [SerializeField] private string eyeMaterialKeywords = "MaskEyes,MaskRed,MaskLamp,eye";
     [SerializeField, ColorUsage(true, true)] private Color eyeFlashColor = new Color(1.0f, 0.0f, 0.0f, 1.0f);
     [SerializeField, Range(0.0f, 10.0f)] private float eyeFlashIntensity = 5.0f;
+    [SerializeField, Range(0.0f, 0.35f)] private float eyeFlashDelayAfterBody = 0.08f;
+    [SerializeField, Range(0.12f, 0.8f)] private float eyeFlashDuration = 0.42f;
+    [SerializeField, Range(1, 4)] private int eyeFlashCount = 2;
     [SerializeField] private string chestMarkMaterialKeywords = "SuitMark,胸マーク,マーク";
     [SerializeField, Range(0.05f, 1.2f)] private float chestMarkSweepDuration = 0.55f;
     [SerializeField, Range(0.01f, 0.75f)] private float chestMarkSweepWidth = 0.22f;
@@ -99,8 +104,11 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     private readonly List<FinalEffectRendererState> finalEffectRendererStates = new List<FinalEffectRendererState>();
     private readonly List<FinalEffectMaterialState> finalEffectMaterialStates = new List<FinalEffectMaterialState>();
     private GameObject beltLightRoot;
+    private GameObject beltLightAnchorModel;
     private Material beltLightRedMaterial;
     private Material beltLightWhiteMaterial;
+    private Vector3 finalEffectBeltCenter;
+    private float finalEffectMaxDistance = 1.0f;
 
     private enum PreviewMaterialRole
     {
@@ -772,27 +780,38 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         BeginFinalMaterialEffects();
 
         var elapsed = 0.0f;
+        var bodyPhaseDuration = Mathf.Min(Mathf.Max(0.01f, bodyFlashDuration), duration);
+        var availableEyeTime = Mathf.Max(0.0f, duration - bodyPhaseDuration);
+        var eyeDelay = Mathf.Min(eyeFlashDelayAfterBody, availableEyeTime * 0.35f);
+        var eyePhaseDuration = Mathf.Max(0.01f, Mathf.Min(eyeFlashDuration, availableEyeTime - eyeDelay));
+        var chestPhaseDuration = Mathf.Max(0.01f, Mathf.Min(chestMarkSweepDuration, eyePhaseDuration));
+
         while (elapsed < duration)
         {
             elapsed += Time.deltaTime;
             var normalizedTime = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
-            var bodyFlashTime = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, bodyFlashDuration));
-            var chestSweepTime = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, chestMarkSweepDuration));
+            var bodyFlashTime = Mathf.Clamp01(elapsed / bodyPhaseDuration);
+            var eyeElapsed = elapsed - bodyPhaseDuration - eyeDelay;
+            var eyeFlashTime = Mathf.Clamp01(eyeElapsed / eyePhaseDuration);
+            var chestSweepTime = Mathf.Clamp01(eyeElapsed / chestPhaseDuration);
             var whiteMix = 1.0f - Mathf.SmoothStep(0.0f, 1.0f, normalizedTime);
-            var beltIntensity = 1.0f - Mathf.SmoothStep(0.65f, 1.0f, normalizedTime);
+            var beltFadeTime = Mathf.InverseLerp(0.65f, 1.0f, normalizedTime);
+            var beltIntensity = 1.0f - Mathf.SmoothStep(0.0f, 1.0f, beltFadeTime);
             var bodyFlash = bodyFlashTime < 1.0f ? EvaluatePulse(bodyFlashTime, bodyFlashCount) : 0.0f;
-            var eyeFlash = bodyFlashTime < 1.0f ? EvaluatePulse(bodyFlashTime, bodyFlashCount) : 0.0f;
-            var chestIntensity = chestSweepTime < 1.0f
-                ? Mathf.SmoothStep(0.0f, 1.0f, 1.0f - chestSweepTime)
+            var eyeFlash = eyeElapsed >= 0.0f && eyeFlashTime < 1.0f
+                ? EvaluateSeparatedPulse(eyeFlashTime, eyeFlashCount)
+                : 0.0f;
+            var chestIntensity = eyeElapsed >= 0.0f && chestSweepTime < 1.0f
+                ? 1.0f
                 : 0.0f;
 
             UpdateBeltLightEffects(beltIntensity, whiteMix);
-            UpdateFinalMaterialEffects(bodyFlash, eyeFlash, chestSweepTime, chestIntensity);
+            UpdateFinalMaterialEffects(bodyFlash, bodyFlashTime, eyeFlash, chestSweepTime, chestIntensity);
             yield return null;
         }
 
         UpdateBeltLightEffects(0.0f, 0.0f);
-        UpdateFinalMaterialEffects(0.0f, 0.0f, 1.0f, 0.0f);
+        UpdateFinalMaterialEffects(0.0f, 1.0f, 0.0f, 1.0f, 0.0f);
         RestoreFinalMaterialEffects();
     }
 
@@ -816,6 +835,12 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         return Mathf.Pow(pulse, 0.55f);
     }
 
+    private static float EvaluateSeparatedPulse(float normalizedTime, int pulseCount)
+    {
+        var pulse = Mathf.Abs(Mathf.Sin(Mathf.Clamp01(normalizedTime) * Mathf.PI * Mathf.Max(1, pulseCount)));
+        return Mathf.SmoothStep(0.35f, 1.0f, pulse);
+    }
+
     private void BeginBeltLightEffects(GameObject anchorModel)
     {
         EndHenshinLightEffects();
@@ -826,6 +851,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         var beltCenter = GetBeltEffectCenter(anchorModel);
+        beltLightAnchorModel = anchorModel;
         beltLightRoot = new GameObject("HenshinBeltLightRays");
         beltLightRoot.transform.SetPositionAndRotation(beltCenter, GetCameraFacingRotation());
         beltLightRoot.transform.SetParent(anchorModel.transform, true);
@@ -871,6 +897,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         beltLightRoot.transform.SetParent(anchorModel.transform, true);
+        beltLightAnchorModel = anchorModel;
         beltLightRoot.transform.position = GetBeltEffectCenter(anchorModel);
     }
 
@@ -879,6 +906,11 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         if (beltLightRoot == null)
         {
             return;
+        }
+
+        if (beltLightAnchorModel != null)
+        {
+            beltLightRoot.transform.position = GetBeltEffectCenter(beltLightAnchorModel);
         }
 
         beltLightRoot.transform.rotation = GetCameraFacingRotation();
@@ -921,6 +953,8 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             beltLightRoot = null;
         }
 
+        beltLightAnchorModel = null;
+
         if (beltLightRedMaterial != null)
         {
             DestroyUnityObject(beltLightRedMaterial);
@@ -957,23 +991,54 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
     private Vector3 GetBeltEffectCenter(GameObject model)
     {
+        if (TryGetHumanoidBonePosition(model, HumanBodyBones.Hips, out var hipsPosition))
+        {
+            return ApplyBeltLightOffset(model, hipsPosition);
+        }
+
         if (TryGetRoleBounds(model, PreviewMaterialRole.BeltCenter, out var centerBounds))
         {
-            return centerBounds.center;
+            return ApplyBeltLightOffset(model, centerBounds.center);
         }
 
         if (TryGetRoleBounds(model, PreviewMaterialRole.Belt, out var beltBounds))
         {
-            return beltBounds.center;
+            return ApplyBeltLightOffset(model, beltBounds.center);
         }
 
         var renderers = model != null ? model.GetComponentsInChildren<Renderer>(true) : Array.Empty<Renderer>();
         if (TryGetRendererBounds(renderers, out var modelBounds))
         {
-            return modelBounds.center + Vector3.down * modelBounds.extents.y * 0.25f;
+            return ApplyBeltLightOffset(model, modelBounds.center + Vector3.down * modelBounds.extents.y * 0.25f);
         }
 
-        return model != null ? model.transform.position : transform.position;
+        return ApplyBeltLightOffset(model, model != null ? model.transform.position : transform.position);
+    }
+
+    private Vector3 ApplyBeltLightOffset(GameObject model, Vector3 worldPosition)
+    {
+        return model != null
+            ? worldPosition + model.transform.TransformVector(beltLightLocalOffset)
+            : worldPosition + beltLightLocalOffset;
+    }
+
+    private static bool TryGetHumanoidBonePosition(GameObject model, HumanBodyBones bone, out Vector3 position)
+    {
+        position = default;
+        var animator = model != null ? model.GetComponentInChildren<Animator>(true) : null;
+        if (animator == null || !animator.isHuman)
+        {
+            return false;
+        }
+
+        var boneTransform = animator.GetBoneTransform(bone);
+        if (boneTransform == null)
+        {
+            return false;
+        }
+
+        position = boneTransform.position;
+        return true;
     }
 
     private bool TryGetRoleBounds(GameObject model, PreviewMaterialRole role, out Bounds bounds)
@@ -1045,6 +1110,34 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         return hasBounds;
     }
 
+    private static float CalculateMaxDistanceFromPoint(Renderer[] renderers, Vector3 point)
+    {
+        if (!TryGetRendererBounds(renderers, out var bounds))
+        {
+            return 1.0f;
+        }
+
+        var maxDistance = 0.01f;
+        var min = bounds.min;
+        var max = bounds.max;
+        for (var x = 0; x <= 1; x++)
+        {
+            for (var y = 0; y <= 1; y++)
+            {
+                for (var z = 0; z <= 1; z++)
+                {
+                    var corner = new Vector3(
+                        x == 0 ? min.x : max.x,
+                        y == 0 ? min.y : max.y,
+                        z == 0 ? min.z : max.z);
+                    maxDistance = Mathf.Max(maxDistance, Vector3.Distance(point, corner));
+                }
+            }
+        }
+
+        return maxDistance;
+    }
+
     private static Quaternion GetCameraFacingRotation()
     {
         var cameraComponent = Camera.main;
@@ -1062,7 +1155,10 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             return;
         }
 
+        finalEffectBeltCenter = GetBeltEffectCenter(transformedModel);
         var renderers = transformedModel.GetComponentsInChildren<Renderer>(true);
+        finalEffectMaxDistance = CalculateMaxDistanceFromPoint(renderers, finalEffectBeltCenter);
+
         for (var rendererIndex = 0; rendererIndex < renderers.Length; rendererIndex++)
         {
             var targetRenderer = renderers[rendererIndex];
@@ -1121,6 +1217,15 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             }
         }
 
+        var bodyFlashShader = Shader.Find("KamenRider/HenshinBodyFlash");
+        if (bodyFlashShader != null)
+        {
+            var bodyMaterial = new Material(bodyFlashShader);
+            CopyBaseMaterialProperties(sourceMaterial, bodyMaterial);
+            ConfigureBodyFlashMaterial(bodyMaterial, 1.0f, 0.0f, 0.0f);
+            return bodyMaterial;
+        }
+
         var effectMaterial = new Material(sourceMaterial);
         effectMaterial.EnableKeyword("_EMISSION");
         return effectMaterial;
@@ -1128,20 +1233,39 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
     private void UpdateFinalMaterialEffects(
         float bodyFlash,
+        float bodyCollapseProgress,
         float eyeFlash,
         float chestSweepProgress,
         float chestSweepIntensity)
     {
         var clampedBodyFlash = Mathf.Clamp01(bodyFlash);
+        var clampedBodyCollapse = Mathf.Clamp01(bodyCollapseProgress);
         var clampedEyeFlash = Mathf.Clamp01(eyeFlash);
         var clampedChestSweep = Mathf.Clamp01(chestSweepProgress);
         var clampedChestIntensity = Mathf.Clamp01(chestSweepIntensity);
+
+        if (transformedModel != null)
+        {
+            finalEffectBeltCenter = GetBeltEffectCenter(transformedModel);
+        }
 
         for (var i = 0; i < finalEffectMaterialStates.Count; i++)
         {
             var state = finalEffectMaterialStates[i];
             if (state.Material == null)
             {
+                continue;
+            }
+
+            if (state.Material.HasProperty("_CollapseProgress"))
+            {
+                ConfigureBodyFlashMaterial(
+                    state.Material,
+                    clampedBodyFlash * bodyFlashIntensity,
+                    clampedBodyCollapse,
+                    state.Role == FinalEffectMaterialRole.Eye
+                        ? clampedEyeFlash * eyeFlashIntensity
+                        : 0.0f);
                 continue;
             }
 
@@ -1213,6 +1337,58 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         return FinalEffectMaterialRole.Body;
+    }
+
+    private void ConfigureBodyFlashMaterial(
+        Material material,
+        float flashIntensity,
+        float collapseProgress,
+        float eyeIntensity)
+    {
+        if (material == null)
+        {
+            return;
+        }
+
+        if (material.HasProperty("_BeltCenterWS"))
+        {
+            material.SetVector("_BeltCenterWS", finalEffectBeltCenter);
+        }
+
+        if (material.HasProperty("_MaxDistance"))
+        {
+            material.SetFloat("_MaxDistance", Mathf.Max(0.01f, finalEffectMaxDistance));
+        }
+
+        if (material.HasProperty("_CollapseProgress"))
+        {
+            material.SetFloat("_CollapseProgress", collapseProgress);
+        }
+
+        if (material.HasProperty("_CollapseBand"))
+        {
+            material.SetFloat("_CollapseBand", bodyFlashCollapseBand);
+        }
+
+        if (material.HasProperty("_FlashColor"))
+        {
+            material.SetColor("_FlashColor", Color.white);
+        }
+
+        if (material.HasProperty("_FlashIntensity"))
+        {
+            material.SetFloat("_FlashIntensity", flashIntensity);
+        }
+
+        if (material.HasProperty("_EyeFlashColor"))
+        {
+            material.SetColor("_EyeFlashColor", eyeFlashColor);
+        }
+
+        if (material.HasProperty("_EyeFlashIntensity"))
+        {
+            material.SetFloat("_EyeFlashIntensity", eyeIntensity);
+        }
     }
 
     private void ConfigureChestSweepMaterial(
