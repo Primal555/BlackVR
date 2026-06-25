@@ -12,6 +12,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
     [SerializeField] private Vector3 spineEulerOffset;
     [SerializeField] private Vector3 leftUpperLegEulerOffset;
     [SerializeField] private Vector3 rightUpperLegEulerOffset;
+    [SerializeField] private Vector3 leftShoulderEulerOffset;
+    [SerializeField] private Vector3 rightShoulderEulerOffset;
 
     [Header("Local Position Offsets")]
     [SerializeField] private Vector3 hipsPositionOffset;
@@ -66,8 +68,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         ApplyOffset(ref spine, spineEulerOffset, spinePositionOffset);
         ApplyOffset(ref leftUpperLeg, leftUpperLegEulerOffset, leftUpperLegPositionOffset);
         ApplyOffset(ref rightUpperLeg, rightUpperLegEulerOffset, rightUpperLegPositionOffset);
-        ApplyOffset(ref leftShoulder, Vector3.zero, leftShoulderPositionOffset);
-        ApplyOffset(ref rightShoulder, Vector3.zero, rightShoulderPositionOffset);
+        ApplyOffset(ref leftShoulder, leftShoulderEulerOffset, leftShoulderPositionOffset);
+        ApplyOffset(ref rightShoulder, rightShoulderEulerOffset, rightShoulderPositionOffset);
         ApplyOffset(ref leftUpperArm, Vector3.zero, leftUpperArmPositionOffset);
         ApplyOffset(ref rightUpperArm, Vector3.zero, rightUpperArmPositionOffset);
     }
