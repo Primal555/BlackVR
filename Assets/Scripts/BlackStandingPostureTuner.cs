@@ -13,6 +13,12 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
     [SerializeField] private Vector3 leftUpperLegEulerOffset;
     [SerializeField] private Vector3 rightUpperLegEulerOffset;
 
+    [Header("Local Position Offsets")]
+    [SerializeField] private Vector3 hipsPositionOffset;
+    [SerializeField] private Vector3 spinePositionOffset;
+    [SerializeField] private Vector3 leftUpperLegPositionOffset;
+    [SerializeField] private Vector3 rightUpperLegPositionOffset;
+
     private Animator animator;
     private BoneOffsetState hips;
     private BoneOffsetState spine;
@@ -24,6 +30,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         public Transform Bone;
         public Quaternion LastAppliedOffset;
         public Quaternion LastFinalRotation;
+        public Vector3 LastAppliedPositionOffset;
+        public Vector3 LastFinalPosition;
         public bool HasLastAppliedOffset;
     }
 
@@ -46,10 +54,10 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
             return;
         }
 
-        ApplyOffset(ref hips, hipsEulerOffset);
-        ApplyOffset(ref spine, spineEulerOffset);
-        ApplyOffset(ref leftUpperLeg, leftUpperLegEulerOffset);
-        ApplyOffset(ref rightUpperLeg, rightUpperLegEulerOffset);
+        ApplyOffset(ref hips, hipsEulerOffset, hipsPositionOffset);
+        ApplyOffset(ref spine, spineEulerOffset, spinePositionOffset);
+        ApplyOffset(ref leftUpperLeg, leftUpperLegEulerOffset, leftUpperLegPositionOffset);
+        ApplyOffset(ref rightUpperLeg, rightUpperLegEulerOffset, rightUpperLegPositionOffset);
     }
 
     private void OnDisable()
@@ -75,21 +83,30 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         rightUpperLeg.Bone = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
     }
 
-    private void ApplyOffset(ref BoneOffsetState state, Vector3 eulerOffset)
+    private void ApplyOffset(
+        ref BoneOffsetState state,
+        Vector3 eulerOffset,
+        Vector3 positionOffset)
     {
-        if (state.Bone == null || eulerOffset == Vector3.zero)
+        if (state.Bone == null || (eulerOffset == Vector3.zero && positionOffset == Vector3.zero))
         {
             RestoreLastAppliedOffset(ref state);
             return;
         }
 
         var baseRotation = GetBaseRotation(ref state);
-        var offset = Quaternion.Slerp(Quaternion.identity, Quaternion.Euler(eulerOffset), weight);
-        var finalRotation = baseRotation * offset;
+        var basePosition = GetBasePosition(ref state);
+        var rotationOffset = Quaternion.Slerp(Quaternion.identity, Quaternion.Euler(eulerOffset), weight);
+        var weightedPositionOffset = Vector3.Lerp(Vector3.zero, positionOffset, weight);
+        var finalRotation = baseRotation * rotationOffset;
+        var finalPosition = basePosition + weightedPositionOffset;
 
         state.Bone.localRotation = finalRotation;
-        state.LastAppliedOffset = offset;
+        state.Bone.localPosition = finalPosition;
+        state.LastAppliedOffset = rotationOffset;
         state.LastFinalRotation = finalRotation;
+        state.LastAppliedPositionOffset = weightedPositionOffset;
+        state.LastFinalPosition = finalPosition;
         state.HasLastAppliedOffset = true;
     }
 
@@ -106,6 +123,21 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         return previousOffsetStillPresent
             ? currentRotation * Quaternion.Inverse(state.LastAppliedOffset)
             : currentRotation;
+    }
+
+    private static Vector3 GetBasePosition(ref BoneOffsetState state)
+    {
+        var currentPosition = state.Bone.localPosition;
+        if (!state.HasLastAppliedOffset)
+        {
+            return currentPosition;
+        }
+
+        var previousOffsetStillPresent =
+            Vector3.Distance(currentPosition, state.LastFinalPosition) < 0.0001f;
+        return previousOffsetStillPresent
+            ? currentPosition - state.LastAppliedPositionOffset
+            : currentPosition;
     }
 
     private void RestoreLastAppliedOffsets()
@@ -128,8 +160,15 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
             state.Bone.localRotation *= Quaternion.Inverse(state.LastAppliedOffset);
         }
 
+        if (Vector3.Distance(state.Bone.localPosition, state.LastFinalPosition) < 0.0001f)
+        {
+            state.Bone.localPosition -= state.LastAppliedPositionOffset;
+        }
+
         state.HasLastAppliedOffset = false;
         state.LastAppliedOffset = Quaternion.identity;
         state.LastFinalRotation = Quaternion.identity;
+        state.LastAppliedPositionOffset = Vector3.zero;
+        state.LastFinalPosition = Vector3.zero;
     }
 }
