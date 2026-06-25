@@ -60,6 +60,27 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField] private ParticleSystem henshinParticles;
     [SerializeField] private ParticleSystem steamParticles;
 
+    [Header("Henshin Light Effects")]
+    [SerializeField] private bool enableHenshinLightEffects = true;
+    [SerializeField, Range(0.0f, 0.6f)] private float postSwitchLightDurationRatio = 0.24f;
+    [SerializeField, Range(8, 72)] private int beltLightRayCount = 32;
+    [SerializeField, Range(0.2f, 5.0f)] private float beltLightRayLength = 2.1f;
+    [SerializeField, Range(0.002f, 0.12f)] private float beltLightRayWidth = 0.026f;
+    [SerializeField, ColorUsage(true, true)] private Color beltLightRed = new Color(1.0f, 0.02f, 0.0f, 1.0f);
+    [SerializeField, ColorUsage(true, true)] private Color beltLightWhite = new Color(1.0f, 0.95f, 0.85f, 1.0f);
+    [SerializeField, Range(0.0f, 12.0f)] private float beltLightIntensity = 5.0f;
+    [SerializeField, Range(0.05f, 0.8f)] private float bodyFlashDuration = 0.34f;
+    [SerializeField, Range(1, 4)] private int bodyFlashCount = 2;
+    [SerializeField, Range(0.0f, 8.0f)] private float bodyFlashIntensity = 3.5f;
+    [SerializeField] private string eyeMaterialKeywords = "MaskEyes,MaskRed,MaskLamp,eye";
+    [SerializeField, ColorUsage(true, true)] private Color eyeFlashColor = new Color(1.0f, 0.0f, 0.0f, 1.0f);
+    [SerializeField, Range(0.0f, 10.0f)] private float eyeFlashIntensity = 5.0f;
+    [SerializeField] private string chestMarkMaterialKeywords = "SuitMark,胸マーク,マーク";
+    [SerializeField, Range(0.05f, 1.2f)] private float chestMarkSweepDuration = 0.55f;
+    [SerializeField, Range(0.01f, 0.75f)] private float chestMarkSweepWidth = 0.22f;
+    [SerializeField, ColorUsage(true, true)] private Color chestMarkSweepColor = Color.white;
+    [SerializeField, Range(0.0f, 10.0f)] private float chestMarkSweepIntensity = 4.0f;
+
     [Header("Extension Events")]
     [SerializeField] private UnityEvent onTransformed;
     [SerializeField] private UnityEvent onResetToBefore;
@@ -74,12 +95,41 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     private readonly List<PreviewMaterialState> previewMaterialStates = new List<PreviewMaterialState>();
     private readonly List<Material> previewMaterials = new List<Material>();
     private readonly List<OutlineMaterialState> outlineMaterials = new List<OutlineMaterialState>();
+    private readonly List<BeltLightRayState> beltLightRays = new List<BeltLightRayState>();
+    private readonly List<FinalEffectRendererState> finalEffectRendererStates = new List<FinalEffectRendererState>();
+    private readonly List<FinalEffectMaterialState> finalEffectMaterialStates = new List<FinalEffectMaterialState>();
+    private GameObject beltLightRoot;
+    private Material beltLightRedMaterial;
+    private Material beltLightWhiteMaterial;
 
     private enum PreviewMaterialRole
     {
         Body,
         Belt,
         BeltCenter
+    }
+
+    private enum FinalEffectMaterialRole
+    {
+        Body,
+        Eye,
+        ChestMark
+    }
+
+    private readonly struct BeltLightRayState
+    {
+        public readonly LineRenderer Renderer;
+        public readonly bool WhiteRay;
+        public readonly float LengthScale;
+        public readonly float AlphaScale;
+
+        public BeltLightRayState(LineRenderer renderer, bool whiteRay, float lengthScale, float alphaScale)
+        {
+            Renderer = renderer;
+            WhiteRay = whiteRay;
+            LengthScale = lengthScale;
+            AlphaScale = alphaScale;
+        }
     }
 
     private readonly struct RendererMaterialState
@@ -119,6 +169,41 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         {
             Material = material;
             Role = role;
+        }
+    }
+
+    private readonly struct FinalEffectRendererState
+    {
+        public readonly Renderer Renderer;
+        public readonly Material[] SharedMaterials;
+
+        public FinalEffectRendererState(Renderer renderer, Material[] sharedMaterials)
+        {
+            Renderer = renderer;
+            SharedMaterials = sharedMaterials;
+        }
+    }
+
+    private readonly struct FinalEffectMaterialState
+    {
+        public readonly Material Material;
+        public readonly FinalEffectMaterialRole Role;
+        public readonly Color BaseColor;
+        public readonly Color Color;
+        public readonly Color EmissionColor;
+
+        public FinalEffectMaterialState(
+            Material material,
+            FinalEffectMaterialRole role,
+            Color baseColor,
+            Color color,
+            Color emissionColor)
+        {
+            Material = material;
+            Role = role;
+            BaseColor = baseColor;
+            Color = color;
+            EmissionColor = emissionColor;
         }
     }
 
@@ -283,19 +368,24 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         BeginSequencePreview();
         yield return WaitForPreviewTrackingWarmup();
         SetSequencePreviewRenderersVisible(true);
+        BeginBeltLightEffects(activeSequencePreviewModel);
 
         var remainingDuration = GetRemainingHenshinSequenceDuration(Time.time - sequenceStartTime);
+        var postSwitchDuration = enableHenshinLightEffects
+            ? Mathf.Clamp(remainingDuration * postSwitchLightDurationRatio, 0.0f, remainingDuration * 0.75f)
+            : 0.0f;
+        var previewDuration = Mathf.Max(0.01f, remainingDuration - postSwitchDuration);
         if (enableBeltReveal)
         {
-            yield return RunBeltRevealSequence(remainingDuration);
+            yield return RunBeltRevealSequence(previewDuration);
         }
         else
         {
             var fadeDuration = Mathf.Clamp(
-                remainingDuration * previewFadeDurationRatio,
+                previewDuration * previewFadeDurationRatio,
                 0.01f,
-                remainingDuration);
-            var outlineDuration = Mathf.Max(0.0f, remainingDuration - fadeDuration);
+                previewDuration);
+            var outlineDuration = Mathf.Max(0.0f, previewDuration - fadeDuration);
 
             yield return RunPreviewBodyFade(fadeDuration);
             yield return RunOutlineSweep(outlineDuration);
@@ -303,6 +393,14 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
         EndSequencePreview(restoreVisibility: false);
         SetTransformedState(true, invokeEvents: true);
+        ReanchorBeltLightEffects(transformedModel);
+
+        if (postSwitchDuration > 0.0f)
+        {
+            yield return RunPostSwitchLightEffects(postSwitchDuration);
+        }
+
+        EndHenshinLightEffects();
 
         if (steamParticles != null)
         {
@@ -328,6 +426,8 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         EndSequencePreview(restoreVisibility: true);
+        EndHenshinLightEffects();
+        RestoreFinalMaterialEffects();
     }
 
     private void BeginSequencePreview()
@@ -629,22 +729,26 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         {
             SetBeltRevealState(centerAlpha: Mathf.SmoothStep(0.0f, 1.0f, t), beltReveal: 0.0f);
             SetBodyPreviewAlpha(0.0f);
+            UpdateBeltLightEffects(Mathf.Lerp(0.22f, 0.55f, t), 0.0f);
         });
 
         yield return RunTimedPhase(expandDuration, t =>
         {
             SetBeltRevealState(centerAlpha: 1.0f, beltReveal: Mathf.SmoothStep(0.0f, 1.0f, t));
             SetBodyPreviewAlpha(0.0f);
+            UpdateBeltLightEffects(Mathf.Lerp(0.55f, 0.85f, t), Mathf.Lerp(0.08f, 0.45f, t));
         });
 
         yield return RunTimedPhase(bodyFadeDuration, t =>
         {
             SetBeltRevealState(centerAlpha: 1.0f, beltReveal: 1.0f);
             SetBodyPreviewAlpha(Mathf.SmoothStep(0.0f, 1.0f, t));
+            UpdateBeltLightEffects(Mathf.Lerp(0.85f, 1.0f, t), Mathf.Lerp(0.45f, 1.0f, t));
         });
 
         SetBeltRevealState(centerAlpha: 1.0f, beltReveal: 1.0f);
         SetBodyPreviewAlpha(1.0f);
+        UpdateBeltLightEffects(1.0f, 1.0f);
     }
 
     private IEnumerator RunPreviewBodyFade(float duration)
@@ -656,6 +760,40 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         });
 
         UpdatePreview(1.0f);
+    }
+
+    private IEnumerator RunPostSwitchLightEffects(float duration)
+    {
+        if (!enableHenshinLightEffects || duration <= 0.0f)
+        {
+            yield break;
+        }
+
+        BeginFinalMaterialEffects();
+
+        var elapsed = 0.0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            var normalizedTime = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, duration));
+            var bodyFlashTime = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, bodyFlashDuration));
+            var chestSweepTime = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, chestMarkSweepDuration));
+            var whiteMix = 1.0f - Mathf.SmoothStep(0.0f, 1.0f, normalizedTime);
+            var beltIntensity = 1.0f - Mathf.SmoothStep(0.65f, 1.0f, normalizedTime);
+            var bodyFlash = bodyFlashTime < 1.0f ? EvaluatePulse(bodyFlashTime, bodyFlashCount) : 0.0f;
+            var eyeFlash = bodyFlashTime < 1.0f ? EvaluatePulse(bodyFlashTime, bodyFlashCount) : 0.0f;
+            var chestIntensity = chestSweepTime < 1.0f
+                ? Mathf.SmoothStep(0.0f, 1.0f, 1.0f - chestSweepTime)
+                : 0.0f;
+
+            UpdateBeltLightEffects(beltIntensity, whiteMix);
+            UpdateFinalMaterialEffects(bodyFlash, eyeFlash, chestSweepTime, chestIntensity);
+            yield return null;
+        }
+
+        UpdateBeltLightEffects(0.0f, 0.0f);
+        UpdateFinalMaterialEffects(0.0f, 0.0f, 1.0f, 0.0f);
+        RestoreFinalMaterialEffects();
     }
 
     private static IEnumerator RunTimedPhase(float duration, Action<float> update)
@@ -670,6 +808,494 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         update?.Invoke(1.0f);
+    }
+
+    private static float EvaluatePulse(float normalizedTime, int pulseCount)
+    {
+        var pulse = Mathf.Abs(Mathf.Sin(Mathf.Clamp01(normalizedTime) * Mathf.PI * Mathf.Max(1, pulseCount)));
+        return Mathf.Pow(pulse, 0.55f);
+    }
+
+    private void BeginBeltLightEffects(GameObject anchorModel)
+    {
+        EndHenshinLightEffects();
+
+        if (!enableHenshinLightEffects || anchorModel == null || beltLightRayCount <= 0)
+        {
+            return;
+        }
+
+        var beltCenter = GetBeltEffectCenter(anchorModel);
+        beltLightRoot = new GameObject("HenshinBeltLightRays");
+        beltLightRoot.transform.SetPositionAndRotation(beltCenter, GetCameraFacingRotation());
+        beltLightRoot.transform.SetParent(anchorModel.transform, true);
+
+        beltLightRedMaterial = CreateLightRayMaterial(beltLightRed, beltLightIntensity);
+        beltLightWhiteMaterial = CreateLightRayMaterial(beltLightWhite, beltLightIntensity);
+
+        for (var i = 0; i < beltLightRayCount; i++)
+        {
+            var rayObject = new GameObject($"Ray_{i:00}");
+            rayObject.transform.SetParent(beltLightRoot.transform, false);
+
+            var lineRenderer = rayObject.AddComponent<LineRenderer>();
+            lineRenderer.useWorldSpace = false;
+            lineRenderer.positionCount = 2;
+            lineRenderer.alignment = LineAlignment.View;
+            lineRenderer.numCapVertices = 2;
+            lineRenderer.numCornerVertices = 2;
+            lineRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            lineRenderer.receiveShadows = false;
+
+            var whiteRay = i % 4 == 1 || i % 4 == 3;
+            lineRenderer.sharedMaterial = whiteRay ? beltLightWhiteMaterial : beltLightRedMaterial;
+
+            var angle = (Mathf.PI * 2.0f * i / beltLightRayCount) + UnityEngine.Random.Range(-0.045f, 0.045f);
+            var lengthScale = UnityEngine.Random.Range(0.72f, 1.16f);
+            var alphaScale = UnityEngine.Random.Range(0.65f, 1.0f);
+            var direction = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0.0f);
+            lineRenderer.SetPosition(0, Vector3.zero);
+            lineRenderer.SetPosition(1, direction * beltLightRayLength * lengthScale);
+
+            beltLightRays.Add(new BeltLightRayState(lineRenderer, whiteRay, lengthScale, alphaScale));
+        }
+
+        UpdateBeltLightEffects(0.0f, 0.0f);
+    }
+
+    private void ReanchorBeltLightEffects(GameObject anchorModel)
+    {
+        if (beltLightRoot == null || anchorModel == null)
+        {
+            return;
+        }
+
+        beltLightRoot.transform.SetParent(anchorModel.transform, true);
+        beltLightRoot.transform.position = GetBeltEffectCenter(anchorModel);
+    }
+
+    private void UpdateBeltLightEffects(float intensity, float whiteMix)
+    {
+        if (beltLightRoot == null)
+        {
+            return;
+        }
+
+        beltLightRoot.transform.rotation = GetCameraFacingRotation();
+
+        var clampedIntensity = Mathf.Clamp01(intensity);
+        var clampedWhiteMix = Mathf.Clamp01(whiteMix);
+        for (var i = 0; i < beltLightRays.Count; i++)
+        {
+            var ray = beltLightRays[i];
+            if (ray.Renderer == null)
+            {
+                continue;
+            }
+
+            var color = ray.WhiteRay ? beltLightWhite : beltLightRed;
+            var colorMix = ray.WhiteRay ? clampedWhiteMix : Mathf.Lerp(1.0f, 0.35f, clampedWhiteMix);
+            var alpha = clampedIntensity * colorMix * ray.AlphaScale;
+            color.a *= alpha;
+
+            var width = beltLightRayWidth * Mathf.Lerp(0.45f, 1.35f, alpha);
+            ray.Renderer.enabled = alpha > 0.01f;
+            ray.Renderer.startWidth = width;
+            ray.Renderer.endWidth = width * 0.18f;
+            ray.Renderer.startColor = color;
+            ray.Renderer.endColor = new Color(color.r, color.g, color.b, 0.0f);
+            ray.Renderer.SetPosition(
+                1,
+                ray.Renderer.GetPosition(1).normalized *
+                beltLightRayLength *
+                ray.LengthScale *
+                Mathf.Lerp(0.82f, 1.25f, clampedIntensity));
+        }
+    }
+
+    private void EndHenshinLightEffects()
+    {
+        if (beltLightRoot != null)
+        {
+            DestroyUnityObject(beltLightRoot);
+            beltLightRoot = null;
+        }
+
+        if (beltLightRedMaterial != null)
+        {
+            DestroyUnityObject(beltLightRedMaterial);
+            beltLightRedMaterial = null;
+        }
+
+        if (beltLightWhiteMaterial != null)
+        {
+            DestroyUnityObject(beltLightWhiteMaterial);
+            beltLightWhiteMaterial = null;
+        }
+
+        beltLightRays.Clear();
+    }
+
+    private static Material CreateLightRayMaterial(Color tintColor, float intensity)
+    {
+        var shader = Shader.Find("KamenRider/HenshinLightRay");
+        var fallbackShader = Shader.Find("Sprites/Default");
+        var material = new Material(shader != null ? shader : fallbackShader);
+
+        if (material.HasProperty("_TintColor"))
+        {
+            material.SetColor("_TintColor", tintColor);
+        }
+
+        if (material.HasProperty("_Intensity"))
+        {
+            material.SetFloat("_Intensity", intensity);
+        }
+
+        return material;
+    }
+
+    private Vector3 GetBeltEffectCenter(GameObject model)
+    {
+        if (TryGetRoleBounds(model, PreviewMaterialRole.BeltCenter, out var centerBounds))
+        {
+            return centerBounds.center;
+        }
+
+        if (TryGetRoleBounds(model, PreviewMaterialRole.Belt, out var beltBounds))
+        {
+            return beltBounds.center;
+        }
+
+        var renderers = model != null ? model.GetComponentsInChildren<Renderer>(true) : Array.Empty<Renderer>();
+        if (TryGetRendererBounds(renderers, out var modelBounds))
+        {
+            return modelBounds.center + Vector3.down * modelBounds.extents.y * 0.25f;
+        }
+
+        return model != null ? model.transform.position : transform.position;
+    }
+
+    private bool TryGetRoleBounds(GameObject model, PreviewMaterialRole role, out Bounds bounds)
+    {
+        bounds = default;
+        var hasBounds = false;
+        if (model == null)
+        {
+            return false;
+        }
+
+        var renderers = model.GetComponentsInChildren<Renderer>(true);
+        for (var rendererIndex = 0; rendererIndex < renderers.Length; rendererIndex++)
+        {
+            var targetRenderer = renderers[rendererIndex];
+            var materials = targetRenderer.sharedMaterials;
+            for (var materialIndex = 0; materialIndex < materials.Length; materialIndex++)
+            {
+                if (GetPreviewMaterialRole(materials[materialIndex]) != role)
+                {
+                    continue;
+                }
+
+                if (!hasBounds)
+                {
+                    bounds = targetRenderer.bounds;
+                    hasBounds = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(targetRenderer.bounds);
+                }
+
+                break;
+            }
+        }
+
+        return hasBounds;
+    }
+
+    private static bool TryGetRendererBounds(Renderer[] renderers, out Bounds bounds)
+    {
+        bounds = default;
+        var hasBounds = false;
+        if (renderers == null)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < renderers.Length; i++)
+        {
+            var targetRenderer = renderers[i];
+            if (targetRenderer == null)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = targetRenderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(targetRenderer.bounds);
+            }
+        }
+
+        return hasBounds;
+    }
+
+    private static Quaternion GetCameraFacingRotation()
+    {
+        var cameraComponent = Camera.main;
+        return cameraComponent != null
+            ? cameraComponent.transform.rotation
+            : Quaternion.identity;
+    }
+
+    private void BeginFinalMaterialEffects()
+    {
+        RestoreFinalMaterialEffects();
+
+        if (transformedModel == null)
+        {
+            return;
+        }
+
+        var renderers = transformedModel.GetComponentsInChildren<Renderer>(true);
+        for (var rendererIndex = 0; rendererIndex < renderers.Length; rendererIndex++)
+        {
+            var targetRenderer = renderers[rendererIndex];
+            var originalMaterials = targetRenderer.sharedMaterials;
+            if (originalMaterials == null || originalMaterials.Length == 0)
+            {
+                continue;
+            }
+
+            var effectMaterials = new Material[originalMaterials.Length];
+            var hasEffectMaterial = false;
+            for (var materialIndex = 0; materialIndex < originalMaterials.Length; materialIndex++)
+            {
+                var sourceMaterial = originalMaterials[materialIndex];
+                if (sourceMaterial == null)
+                {
+                    continue;
+                }
+
+                var role = GetFinalEffectMaterialRole(sourceMaterial);
+                var effectMaterial = CreateFinalEffectMaterial(sourceMaterial, targetRenderer, role);
+                effectMaterials[materialIndex] = effectMaterial;
+                finalEffectMaterialStates.Add(new FinalEffectMaterialState(
+                    effectMaterial,
+                    role,
+                    GetMaterialColor(effectMaterial, "_BaseColor", Color.white),
+                    GetMaterialColor(effectMaterial, "_Color", Color.white),
+                    GetMaterialColor(effectMaterial, "_EmissionColor", Color.black)));
+                hasEffectMaterial = true;
+            }
+
+            if (!hasEffectMaterial)
+            {
+                continue;
+            }
+
+            finalEffectRendererStates.Add(new FinalEffectRendererState(targetRenderer, originalMaterials));
+            targetRenderer.sharedMaterials = effectMaterials;
+        }
+    }
+
+    private Material CreateFinalEffectMaterial(
+        Material sourceMaterial,
+        Renderer targetRenderer,
+        FinalEffectMaterialRole role)
+    {
+        if (role == FinalEffectMaterialRole.ChestMark)
+        {
+            var chestShader = Shader.Find("KamenRider/HenshinChestSweep");
+            if (chestShader != null)
+            {
+                var chestMaterial = new Material(chestShader);
+                CopyBaseMaterialProperties(sourceMaterial, chestMaterial);
+                ConfigureChestSweepMaterial(chestMaterial, targetRenderer, 1.0f, 0.0f, 0.0f);
+                return chestMaterial;
+            }
+        }
+
+        var effectMaterial = new Material(sourceMaterial);
+        effectMaterial.EnableKeyword("_EMISSION");
+        return effectMaterial;
+    }
+
+    private void UpdateFinalMaterialEffects(
+        float bodyFlash,
+        float eyeFlash,
+        float chestSweepProgress,
+        float chestSweepIntensity)
+    {
+        var clampedBodyFlash = Mathf.Clamp01(bodyFlash);
+        var clampedEyeFlash = Mathf.Clamp01(eyeFlash);
+        var clampedChestSweep = Mathf.Clamp01(chestSweepProgress);
+        var clampedChestIntensity = Mathf.Clamp01(chestSweepIntensity);
+
+        for (var i = 0; i < finalEffectMaterialStates.Count; i++)
+        {
+            var state = finalEffectMaterialStates[i];
+            if (state.Material == null)
+            {
+                continue;
+            }
+
+            var baseFlashColor = Color.Lerp(state.BaseColor, Color.white, clampedBodyFlash * 0.72f);
+            var colorFlashColor = Color.Lerp(state.Color, Color.white, clampedBodyFlash * 0.72f);
+            var emission = state.EmissionColor + Color.white * (clampedBodyFlash * bodyFlashIntensity);
+
+            if (state.Role == FinalEffectMaterialRole.Eye)
+            {
+                emission += eyeFlashColor * (clampedEyeFlash * eyeFlashIntensity);
+            }
+
+            SetMaterialColor(state.Material, "_BaseColor", baseFlashColor);
+            SetMaterialColor(state.Material, "_Color", colorFlashColor);
+            SetMaterialEmission(state.Material, emission);
+
+            if (state.Role == FinalEffectMaterialRole.ChestMark)
+            {
+                ConfigureChestSweepMaterial(
+                    state.Material,
+                    null,
+                    clampedChestSweep,
+                    chestMarkSweepIntensity * clampedChestIntensity,
+                    clampedBodyFlash * bodyFlashIntensity);
+            }
+        }
+    }
+
+    private void RestoreFinalMaterialEffects()
+    {
+        for (var i = 0; i < finalEffectRendererStates.Count; i++)
+        {
+            var state = finalEffectRendererStates[i];
+            if (state.Renderer != null)
+            {
+                state.Renderer.sharedMaterials = state.SharedMaterials;
+            }
+        }
+
+        finalEffectRendererStates.Clear();
+
+        for (var i = 0; i < finalEffectMaterialStates.Count; i++)
+        {
+            if (finalEffectMaterialStates[i].Material != null)
+            {
+                DestroyUnityObject(finalEffectMaterialStates[i].Material);
+            }
+        }
+
+        finalEffectMaterialStates.Clear();
+    }
+
+    private FinalEffectMaterialRole GetFinalEffectMaterialRole(Material material)
+    {
+        if (material == null)
+        {
+            return FinalEffectMaterialRole.Body;
+        }
+
+        var lookupText = GetMaterialLookupText(material);
+        if (MatchesAnyKeyword(lookupText, eyeMaterialKeywords))
+        {
+            return FinalEffectMaterialRole.Eye;
+        }
+
+        if (MatchesAnyKeyword(lookupText, chestMarkMaterialKeywords))
+        {
+            return FinalEffectMaterialRole.ChestMark;
+        }
+
+        return FinalEffectMaterialRole.Body;
+    }
+
+    private void ConfigureChestSweepMaterial(
+        Material material,
+        Renderer targetRenderer,
+        float sweepProgress,
+        float sweepIntensity,
+        float flashIntensity)
+    {
+        if (material == null)
+        {
+            return;
+        }
+
+        if (targetRenderer != null)
+        {
+            var bounds = GetRendererLocalBounds(targetRenderer);
+            if (material.HasProperty("_CenterX"))
+            {
+                material.SetFloat("_CenterX", bounds.center.x);
+            }
+
+            if (material.HasProperty("_HalfWidth"))
+            {
+                material.SetFloat("_HalfWidth", Mathf.Max(0.0001f, bounds.extents.x));
+            }
+        }
+
+        if (material.HasProperty("_SweepProgress"))
+        {
+            material.SetFloat("_SweepProgress", sweepProgress);
+        }
+
+        if (material.HasProperty("_SweepWidth"))
+        {
+            material.SetFloat("_SweepWidth", chestMarkSweepWidth);
+        }
+
+        if (material.HasProperty("_SweepColor"))
+        {
+            material.SetColor("_SweepColor", chestMarkSweepColor);
+        }
+
+        if (material.HasProperty("_SweepIntensity"))
+        {
+            material.SetFloat("_SweepIntensity", sweepIntensity);
+        }
+
+        if (material.HasProperty("_FlashColor"))
+        {
+            material.SetColor("_FlashColor", Color.white);
+        }
+
+        if (material.HasProperty("_FlashIntensity"))
+        {
+            material.SetFloat("_FlashIntensity", flashIntensity);
+        }
+    }
+
+    private static Color GetMaterialColor(Material material, string propertyName, Color fallback)
+    {
+        return material != null && material.HasProperty(propertyName)
+            ? material.GetColor(propertyName)
+            : fallback;
+    }
+
+    private static void SetMaterialColor(Material material, string propertyName, Color color)
+    {
+        if (material != null && material.HasProperty(propertyName))
+        {
+            material.SetColor(propertyName, color);
+        }
+    }
+
+    private static void SetMaterialEmission(Material material, Color emission)
+    {
+        if (material == null || !material.HasProperty("_EmissionColor"))
+        {
+            return;
+        }
+
+        material.EnableKeyword("_EMISSION");
+        material.SetColor("_EmissionColor", emission);
     }
 
     private void UpdatePreviewOutlineSweep(float elapsed)
