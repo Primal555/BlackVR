@@ -18,6 +18,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
     [SerializeField] private Vector3 spinePositionOffset;
     [SerializeField] private Vector3 leftUpperLegPositionOffset;
     [SerializeField] private Vector3 rightUpperLegPositionOffset;
+    [SerializeField] private Vector3 leftShoulderPositionOffset;
+    [SerializeField] private Vector3 rightShoulderPositionOffset;
     [SerializeField] private Vector3 leftUpperArmPositionOffset;
     [SerializeField] private Vector3 rightUpperArmPositionOffset;
 
@@ -26,6 +28,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
     private BoneOffsetState spine;
     private BoneOffsetState leftUpperLeg;
     private BoneOffsetState rightUpperLeg;
+    private BoneOffsetState leftShoulder;
+    private BoneOffsetState rightShoulder;
     private BoneOffsetState leftUpperArm;
     private BoneOffsetState rightUpperArm;
 
@@ -62,6 +66,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         ApplyOffset(ref spine, spineEulerOffset, spinePositionOffset);
         ApplyOffset(ref leftUpperLeg, leftUpperLegEulerOffset, leftUpperLegPositionOffset);
         ApplyOffset(ref rightUpperLeg, rightUpperLegEulerOffset, rightUpperLegPositionOffset);
+        ApplyOffset(ref leftShoulder, Vector3.zero, leftShoulderPositionOffset);
+        ApplyOffset(ref rightShoulder, Vector3.zero, rightShoulderPositionOffset);
         ApplyOffset(ref leftUpperArm, Vector3.zero, leftUpperArmPositionOffset);
         ApplyOffset(ref rightUpperArm, Vector3.zero, rightUpperArmPositionOffset);
     }
@@ -87,6 +93,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         spine.Bone = animator.GetBoneTransform(HumanBodyBones.Spine);
         leftUpperLeg.Bone = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
         rightUpperLeg.Bone = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+        leftShoulder.Bone = animator.GetBoneTransform(HumanBodyBones.LeftShoulder);
+        rightShoulder.Bone = animator.GetBoneTransform(HumanBodyBones.RightShoulder);
         leftUpperArm.Bone = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
         rightUpperArm.Bone = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
     }
@@ -154,6 +162,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         RestoreLastAppliedOffset(ref spine);
         RestoreLastAppliedOffset(ref leftUpperLeg);
         RestoreLastAppliedOffset(ref rightUpperLeg);
+        RestoreLastAppliedOffset(ref leftShoulder);
+        RestoreLastAppliedOffset(ref rightShoulder);
         RestoreLastAppliedOffset(ref leftUpperArm);
         RestoreLastAppliedOffset(ref rightUpperArm);
     }
