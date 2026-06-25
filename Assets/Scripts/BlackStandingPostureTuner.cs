@@ -18,12 +18,16 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
     [SerializeField] private Vector3 spinePositionOffset;
     [SerializeField] private Vector3 leftUpperLegPositionOffset;
     [SerializeField] private Vector3 rightUpperLegPositionOffset;
+    [SerializeField] private Vector3 leftUpperArmPositionOffset;
+    [SerializeField] private Vector3 rightUpperArmPositionOffset;
 
     private Animator animator;
     private BoneOffsetState hips;
     private BoneOffsetState spine;
     private BoneOffsetState leftUpperLeg;
     private BoneOffsetState rightUpperLeg;
+    private BoneOffsetState leftUpperArm;
+    private BoneOffsetState rightUpperArm;
 
     private struct BoneOffsetState
     {
@@ -58,6 +62,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         ApplyOffset(ref spine, spineEulerOffset, spinePositionOffset);
         ApplyOffset(ref leftUpperLeg, leftUpperLegEulerOffset, leftUpperLegPositionOffset);
         ApplyOffset(ref rightUpperLeg, rightUpperLegEulerOffset, rightUpperLegPositionOffset);
+        ApplyOffset(ref leftUpperArm, Vector3.zero, leftUpperArmPositionOffset);
+        ApplyOffset(ref rightUpperArm, Vector3.zero, rightUpperArmPositionOffset);
     }
 
     private void OnDisable()
@@ -81,6 +87,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         spine.Bone = animator.GetBoneTransform(HumanBodyBones.Spine);
         leftUpperLeg.Bone = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
         rightUpperLeg.Bone = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+        leftUpperArm.Bone = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+        rightUpperArm.Bone = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
     }
 
     private void ApplyOffset(
@@ -146,6 +154,8 @@ public sealed class BlackStandingPostureTuner : MonoBehaviour
         RestoreLastAppliedOffset(ref spine);
         RestoreLastAppliedOffset(ref leftUpperLeg);
         RestoreLastAppliedOffset(ref rightUpperLeg);
+        RestoreLastAppliedOffset(ref leftUpperArm);
+        RestoreLastAppliedOffset(ref rightUpperArm);
     }
 
     private static void RestoreLastAppliedOffset(ref BoneOffsetState state)
