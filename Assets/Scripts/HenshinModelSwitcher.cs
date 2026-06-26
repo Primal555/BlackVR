@@ -4,6 +4,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.Rendering;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 [DisallowMultipleComponent]
 public sealed class HenshinModelSwitcher : MonoBehaviour
@@ -30,6 +33,10 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField] private bool enableLeftYReset = true;
     [SerializeField] private AudioClip resetClip;
     [SerializeField, Range(0.0f, 1.0f)] private float resetVolume = 1.0f;
+
+    [Header("Keyboard Debug")]
+    [SerializeField] private bool enableKeyboardDebugToggle = true;
+    [SerializeField] private KeyCode keyboardDebugToggleKey = KeyCode.H;
 
     [Header("Henshin Sequence")]
     [SerializeField] private bool useHenshinSequence = true;
@@ -261,14 +268,20 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
     private void Update()
     {
-        if (henshinSequenceRoutine != null || !enableLeftYReset)
+        if (henshinSequenceRoutine != null)
         {
             return;
         }
 
-        if (IsLeftYPressedThisFrame())
+        if (enableKeyboardDebugToggle && IsKeyboardKeyPressedThisFrame(keyboardDebugToggleKey))
         {
-            ToggleFormWithLeftY();
+            ToggleFormFromManualInput();
+            return;
+        }
+
+        if (enableLeftYReset && IsLeftYPressedThisFrame())
+        {
+            ToggleFormFromManualInput();
         }
     }
 
@@ -327,7 +340,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         TransformNow();
     }
 
-    private void ToggleFormWithLeftY()
+    private void ToggleFormFromManualInput()
     {
         if (isTransformed)
         {
@@ -1967,6 +1980,72 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         return OVRInput.GetDown(OVRInput.RawButton.Y, OVRInput.Controller.LTouch) ||
                OVRInput.GetDown(OVRInput.Button.Two, OVRInput.Controller.LTouch);
     }
+
+    private static bool IsKeyboardKeyPressedThisFrame(KeyCode keyCode)
+    {
+#if ENABLE_INPUT_SYSTEM
+        if (IsKeyboardKeyPressedThisFrameInputSystem(keyCode))
+        {
+            return true;
+        }
+#endif
+
+        try
+        {
+            return Input.GetKeyDown(keyCode);
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+#if ENABLE_INPUT_SYSTEM
+    private static bool IsKeyboardKeyPressedThisFrameInputSystem(KeyCode keyCode)
+    {
+        var keyboard = Keyboard.current;
+        if (keyboard == null)
+        {
+            return false;
+        }
+
+        switch (keyCode)
+        {
+            case KeyCode.H:
+                return keyboard.hKey.wasPressedThisFrame;
+            case KeyCode.B:
+                return keyboard.bKey.wasPressedThisFrame;
+            case KeyCode.T:
+                return keyboard.tKey.wasPressedThisFrame;
+            case KeyCode.Space:
+                return keyboard.spaceKey.wasPressedThisFrame;
+            case KeyCode.Return:
+                return keyboard.enterKey.wasPressedThisFrame;
+            case KeyCode.Alpha0:
+                return keyboard.digit0Key.wasPressedThisFrame;
+            case KeyCode.Alpha1:
+                return keyboard.digit1Key.wasPressedThisFrame;
+            case KeyCode.Alpha2:
+                return keyboard.digit2Key.wasPressedThisFrame;
+            case KeyCode.Alpha3:
+                return keyboard.digit3Key.wasPressedThisFrame;
+            case KeyCode.Alpha4:
+                return keyboard.digit4Key.wasPressedThisFrame;
+            case KeyCode.Alpha5:
+                return keyboard.digit5Key.wasPressedThisFrame;
+            case KeyCode.Alpha6:
+                return keyboard.digit6Key.wasPressedThisFrame;
+            case KeyCode.Alpha7:
+                return keyboard.digit7Key.wasPressedThisFrame;
+            case KeyCode.Alpha8:
+                return keyboard.digit8Key.wasPressedThisFrame;
+            case KeyCode.Alpha9:
+                return keyboard.digit9Key.wasPressedThisFrame;
+            default:
+                return false;
+        }
+    }
+#endif
 
     private void SetVisible(GameObject target, bool visible)
     {
