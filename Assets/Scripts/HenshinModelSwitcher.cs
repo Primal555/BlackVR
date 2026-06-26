@@ -92,11 +92,14 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField, Range(0.12f, 0.8f)] private float eyeFlashDuration = 0.42f;
     [SerializeField, Range(1, 4)] private int eyeFlashCount = 2;
     [SerializeField, Range(0.1f, 0.8f)] private float eyeFlashOnRatio = 0.32f;
+    [SerializeField] private bool useFixedEyeBlinkTiming = true;
+    [SerializeField, Range(0.01f, 0.12f)] private float eyeFlashOnSeconds = 0.035f;
+    [SerializeField, Range(0.02f, 0.2f)] private float eyeFlashGapSeconds = 0.075f;
     [SerializeField] private string chestMarkMaterialKeywords = "SuitMark,胸マーク,マーク";
     [SerializeField, Range(0.05f, 1.2f)] private float chestMarkSweepDuration = 0.55f;
     [SerializeField, Range(0.01f, 0.75f)] private float chestMarkSweepWidth = 0.22f;
     [SerializeField] private bool chestMarkSweepRightToLeft = true;
-    [SerializeField, Range(0.0f, 1.0f)] private float chestMarkMaskThreshold = 0.68f;
+    [SerializeField, Range(0.0f, 1.0f)] private float chestMarkMaskThreshold = 0.55f;
     [SerializeField, Range(0.01f, 0.4f)] private float chestMarkMaskSoftness = 0.12f;
     [SerializeField, ColorUsage(true, true)] private Color chestMarkSweepColor = Color.white;
     [SerializeField, Range(0.0f, 10.0f)] private float chestMarkSweepIntensity = 4.0f;
@@ -827,8 +830,8 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             var beltFadeTime = Mathf.InverseLerp(0.65f, 1.0f, normalizedTime);
             var beltIntensity = 1.0f - Mathf.SmoothStep(0.0f, 1.0f, beltFadeTime);
             var bodyFlash = bodyFlashTime < 1.0f ? EvaluatePulse(bodyFlashTime, bodyFlashCount) : 0.0f;
-            var eyeFlash = eyeElapsed >= 0.0f && eyeFlashTime < 1.0f
-                ? EvaluateBlinkPulse(eyeFlashTime, eyeFlashCount, eyeFlashOnRatio)
+            var eyeFlash = eyeElapsed >= 0.0f
+                ? EvaluateEyeFlash(eyeElapsed, eyeFlashTime)
                 : 0.0f;
             var chestIntensity = eyeElapsed >= 0.0f && chestSweepTime < 1.0f
                 ? 1.0f
@@ -890,6 +893,51 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         if (localTime > 1.0f - fadeRatio)
         {
             return Mathf.SmoothStep(0.0f, 1.0f, (1.0f - localTime) / fadeRatio);
+        }
+
+        return 1.0f;
+    }
+
+    private float EvaluateEyeFlash(float elapsedSeconds, float normalizedTime)
+    {
+        if (!useFixedEyeBlinkTiming)
+        {
+            return normalizedTime < 1.0f
+                ? EvaluateBlinkPulse(normalizedTime, eyeFlashCount, eyeFlashOnRatio)
+                : 0.0f;
+        }
+
+        var count = Mathf.Max(1, eyeFlashCount);
+        var onSeconds = Mathf.Max(0.001f, eyeFlashOnSeconds);
+        var cycleSeconds = onSeconds + Mathf.Max(0.0f, eyeFlashGapSeconds);
+        var totalSeconds = (count * onSeconds) + ((count - 1) * Mathf.Max(0.0f, eyeFlashGapSeconds));
+        if (elapsedSeconds < 0.0f || elapsedSeconds >= totalSeconds)
+        {
+            return 0.0f;
+        }
+
+        var blinkIndex = Mathf.FloorToInt(elapsedSeconds / cycleSeconds);
+        if (blinkIndex >= count)
+        {
+            return 0.0f;
+        }
+
+        var localTime = elapsedSeconds - (blinkIndex * cycleSeconds);
+        if (localTime > onSeconds)
+        {
+            return 0.0f;
+        }
+
+        var normalizedBlink = localTime / onSeconds;
+        const float fadeRatio = 0.12f;
+        if (normalizedBlink < fadeRatio)
+        {
+            return Mathf.SmoothStep(0.0f, 1.0f, normalizedBlink / fadeRatio);
+        }
+
+        if (normalizedBlink > 1.0f - fadeRatio)
+        {
+            return Mathf.SmoothStep(0.0f, 1.0f, (1.0f - normalizedBlink) / fadeRatio);
         }
 
         return 1.0f;
