@@ -83,6 +83,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField, Range(0.05f, 0.8f)] private float bodyFlashDuration = 0.34f;
     [SerializeField, Range(1, 4)] private int bodyFlashCount = 2;
     [SerializeField, Range(0.0f, 8.0f)] private float bodyFlashIntensity = 3.5f;
+    [SerializeField] private bool useBodyCollapseShader;
     [SerializeField, Range(0.02f, 0.45f)] private float bodyFlashCollapseBand = 0.16f;
     [SerializeField] private string eyeMaterialKeywords = "MaskEyes,MaskRed,MaskLamp,eye";
     [SerializeField, ColorUsage(true, true)] private Color eyeFlashColor = new Color(1.0f, 0.0f, 0.0f, 1.0f);
@@ -1279,12 +1280,14 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             }
         }
 
-        var bodyFlashShader = Shader.Find("KamenRider/HenshinBodyFlash");
+        var bodyFlashShader = useBodyCollapseShader
+            ? Shader.Find("KamenRider/HenshinBodyFlash")
+            : null;
         if (bodyFlashShader != null)
         {
             var bodyMaterial = new Material(bodyFlashShader);
             CopyBaseMaterialProperties(sourceMaterial, bodyMaterial);
-            ConfigureBodyFlashMaterial(bodyMaterial, 1.0f, 0.0f, 0.0f);
+            ConfigureBodyFlashMaterial(bodyMaterial, 0.0f, 0.0f, 0.0f);
             return bodyMaterial;
         }
 
