@@ -95,6 +95,8 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField] private bool useFixedEyeBlinkTiming = true;
     [SerializeField, Range(0.01f, 0.12f)] private float eyeFlashOnSeconds = 0.035f;
     [SerializeField, Range(0.02f, 0.2f)] private float eyeFlashGapSeconds = 0.075f;
+    [SerializeField] private bool suppressEyeEmissionBetweenFlashes = true;
+    [SerializeField, Range(0.0f, 1.0f)] private float eyeOffColorMultiplier = 0.45f;
     [SerializeField] private string chestMarkMaterialKeywords = "SuitMark,胸マーク,マーク";
     [SerializeField, Range(0.05f, 1.2f)] private float chestMarkSweepDuration = 0.55f;
     [SerializeField, Range(0.01f, 0.75f)] private float chestMarkSweepWidth = 0.22f;
@@ -816,7 +818,8 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         var availableEyeTime = Mathf.Max(0.0f, duration - bodyPhaseDuration);
         var eyeDelay = Mathf.Min(eyeFlashDelayAfterBody, availableEyeTime * 0.35f);
         var eyePhaseDuration = Mathf.Max(0.01f, Mathf.Min(eyeFlashDuration, availableEyeTime - eyeDelay));
-        var chestPhaseDuration = Mathf.Max(0.01f, Mathf.Min(chestMarkSweepDuration, eyePhaseDuration));
+        var availableChestTime = Mathf.Max(0.01f, duration - bodyPhaseDuration - eyeDelay);
+        var chestPhaseDuration = Mathf.Max(0.01f, Mathf.Min(chestMarkSweepDuration, availableChestTime));
 
         while (elapsed < duration)
         {
@@ -1417,6 +1420,15 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
             if (state.Role == FinalEffectMaterialRole.Eye)
             {
+                var dimmedBaseColor = state.BaseColor * eyeOffColorMultiplier;
+                var dimmedColor = state.Color * eyeOffColorMultiplier;
+                baseFlashColor = Color.Lerp(dimmedBaseColor, eyeFlashColor, clampedEyeFlash);
+                colorFlashColor = Color.Lerp(dimmedColor, eyeFlashColor, clampedEyeFlash);
+                baseFlashColor = Color.Lerp(baseFlashColor, Color.white, clampedBodyFlash * 0.72f);
+                colorFlashColor = Color.Lerp(colorFlashColor, Color.white, clampedBodyFlash * 0.72f);
+                emission = suppressEyeEmissionBetweenFlashes
+                    ? Color.white * (clampedBodyFlash * bodyFlashIntensity)
+                    : emission;
                 emission += eyeFlashColor * (clampedEyeFlash * eyeFlashIntensity);
             }
 
