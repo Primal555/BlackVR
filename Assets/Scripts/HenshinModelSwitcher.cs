@@ -65,6 +65,9 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField, Range(0.0f, 0.6f)] private float postSwitchLightDurationRatio = 0.24f;
     [SerializeField, Range(8, 72)] private int beltLightRayCount = 32;
     [SerializeField, Range(0.2f, 5.0f)] private float beltLightRayLength = 2.1f;
+    [SerializeField, Range(0.02f, 0.8f)] private float beltLightRaySegmentLength = 0.34f;
+    [SerializeField, Range(0.0f, 0.5f)] private float beltLightRayInnerRadius = 0.06f;
+    [SerializeField, Range(0.04f, 0.8f)] private float beltLightRayLifetime = 0.22f;
     [SerializeField, Range(0.002f, 0.12f)] private float beltLightRayWidth = 0.026f;
     [SerializeField] private Vector3 beltLightLocalOffset = new Vector3(0.0f, 0.14f, 0.02f);
     [SerializeField, ColorUsage(true, true)] private Color beltLightRed = new Color(1.0f, 0.02f, 0.0f, 1.0f);
@@ -124,19 +127,25 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         ChestMark
     }
 
-    private readonly struct BeltLightRayState
+    private sealed class BeltLightRayState
     {
         public readonly LineRenderer Renderer;
         public readonly bool WhiteRay;
-        public readonly float LengthScale;
-        public readonly float AlphaScale;
+        public float Angle;
+        public float SegmentLength;
+        public float Lifetime;
+        public float Age;
+        public float AlphaScale;
 
-        public BeltLightRayState(LineRenderer renderer, bool whiteRay, float lengthScale, float alphaScale)
+        public BeltLightRayState(LineRenderer renderer, bool whiteRay)
         {
             Renderer = renderer;
             WhiteRay = whiteRay;
-            LengthScale = lengthScale;
-            AlphaScale = alphaScale;
+            Angle = 0.0f;
+            SegmentLength = 0.0f;
+            Lifetime = 0.1f;
+            Age = 0.0f;
+            AlphaScale = 1.0f;
         }
     }
 
@@ -876,14 +885,12 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             var whiteRay = i % 4 == 1 || i % 4 == 3;
             lineRenderer.sharedMaterial = whiteRay ? beltLightWhiteMaterial : beltLightRedMaterial;
 
-            var angle = (Mathf.PI * 2.0f * i / beltLightRayCount) + UnityEngine.Random.Range(-0.045f, 0.045f);
-            var lengthScale = UnityEngine.Random.Range(0.72f, 1.16f);
-            var alphaScale = UnityEngine.Random.Range(0.65f, 1.0f);
-            var direction = new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0.0f);
             lineRenderer.SetPosition(0, Vector3.zero);
-            lineRenderer.SetPosition(1, direction * beltLightRayLength * lengthScale);
+            lineRenderer.SetPosition(1, Vector3.zero);
 
-            beltLightRays.Add(new BeltLightRayState(lineRenderer, whiteRay, lengthScale, alphaScale));
+            var rayState = new BeltLightRayState(lineRenderer, whiteRay);
+            ResetBeltLightRay(rayState, true);
+            beltLightRays.Add(rayState);
         }
 
         UpdateBeltLightEffects(0.0f, 0.0f);
@@ -917,6 +924,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
         var clampedIntensity = Mathf.Clamp01(intensity);
         var clampedWhiteMix = Mathf.Clamp01(whiteMix);
+        var outerRadius = Mathf.Max(beltLightRayInnerRadius + 0.01f, beltLightRayLength);
         for (var i = 0; i < beltLightRays.Count; i++)
         {
             var ray = beltLightRays[i];
@@ -925,24 +933,54 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
                 continue;
             }
 
+            if (clampedIntensity <= 0.001f)
+            {
+                ray.Renderer.enabled = false;
+                continue;
+            }
+
+            ray.Age += Time.deltaTime;
+            if (ray.Age >= ray.Lifetime)
+            {
+                ResetBeltLightRay(ray, false);
+            }
+
             var color = ray.WhiteRay ? beltLightWhite : beltLightRed;
             var colorMix = ray.WhiteRay ? clampedWhiteMix : Mathf.Lerp(1.0f, 0.35f, clampedWhiteMix);
-            var alpha = clampedIntensity * colorMix * ray.AlphaScale;
+            var lifeProgress = Mathf.Clamp01(ray.Age / Mathf.Max(0.01f, ray.Lifetime));
+            var fadeIn = Mathf.SmoothStep(0.0f, 1.0f, Mathf.InverseLerp(0.0f, 0.12f, lifeProgress));
+            var fadeOut = 1.0f - Mathf.SmoothStep(0.0f, 1.0f, Mathf.InverseLerp(0.58f, 1.0f, lifeProgress));
+            var alpha = clampedIntensity * colorMix * ray.AlphaScale * fadeIn * fadeOut;
             color.a *= alpha;
 
-            var width = beltLightRayWidth * Mathf.Lerp(0.45f, 1.35f, alpha);
+            var direction = new Vector3(Mathf.Cos(ray.Angle), Mathf.Sin(ray.Angle), 0.0f);
+            var distance = Mathf.Lerp(beltLightRayInnerRadius, outerRadius, Mathf.SmoothStep(0.0f, 1.0f, lifeProgress));
+            var segmentLength = ray.SegmentLength * Mathf.Lerp(0.75f, 1.25f, clampedIntensity);
+            var start = direction * distance;
+            var end = direction * Mathf.Min(outerRadius, distance + segmentLength);
+            var width = beltLightRayWidth * Mathf.Lerp(0.35f, 1.15f, alpha);
             ray.Renderer.enabled = alpha > 0.01f;
             ray.Renderer.startWidth = width;
             ray.Renderer.endWidth = width * 0.18f;
             ray.Renderer.startColor = color;
             ray.Renderer.endColor = new Color(color.r, color.g, color.b, 0.0f);
-            ray.Renderer.SetPosition(
-                1,
-                ray.Renderer.GetPosition(1).normalized *
-                beltLightRayLength *
-                ray.LengthScale *
-                Mathf.Lerp(0.82f, 1.25f, clampedIntensity));
+            ray.Renderer.SetPosition(0, start);
+            ray.Renderer.SetPosition(1, end);
         }
+    }
+
+    private void ResetBeltLightRay(BeltLightRayState ray, bool randomizeAge)
+    {
+        if (ray == null)
+        {
+            return;
+        }
+
+        ray.Angle = UnityEngine.Random.Range(0.0f, Mathf.PI * 2.0f);
+        ray.SegmentLength = beltLightRaySegmentLength * UnityEngine.Random.Range(0.45f, 1.25f);
+        ray.Lifetime = Mathf.Max(0.01f, beltLightRayLifetime * UnityEngine.Random.Range(0.65f, 1.35f));
+        ray.Age = randomizeAge ? UnityEngine.Random.Range(0.0f, ray.Lifetime) : 0.0f;
+        ray.AlphaScale = UnityEngine.Random.Range(0.55f, 1.0f);
     }
 
     private void EndHenshinLightEffects()
