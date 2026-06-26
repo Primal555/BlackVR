@@ -136,6 +136,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         public float Lifetime;
         public float Age;
         public float AlphaScale;
+        public float DensitySeed;
 
         public BeltLightRayState(LineRenderer renderer, bool whiteRay)
         {
@@ -146,6 +147,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             Lifetime = 0.1f;
             Age = 0.0f;
             AlphaScale = 1.0f;
+            DensitySeed = 0.0f;
         }
     }
 
@@ -925,6 +927,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         var clampedIntensity = Mathf.Clamp01(intensity);
         var clampedWhiteMix = Mathf.Clamp01(whiteMix);
         var outerRadius = Mathf.Max(beltLightRayInnerRadius + 0.01f, beltLightRayLength);
+        var density = Mathf.SmoothStep(0.0f, 1.0f, clampedIntensity);
         for (var i = 0; i < beltLightRays.Count; i++)
         {
             var ray = beltLightRays[i];
@@ -933,16 +936,23 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
                 continue;
             }
 
+            ray.Age += Time.deltaTime;
+
             if (clampedIntensity <= 0.001f)
             {
                 ray.Renderer.enabled = false;
                 continue;
             }
 
-            ray.Age += Time.deltaTime;
             if (ray.Age >= ray.Lifetime)
             {
                 ResetBeltLightRay(ray, false);
+            }
+
+            if (ray.DensitySeed > density)
+            {
+                ray.Renderer.enabled = false;
+                continue;
             }
 
             var color = ray.WhiteRay ? beltLightWhite : beltLightRed;
@@ -981,6 +991,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         ray.Lifetime = Mathf.Max(0.01f, beltLightRayLifetime * UnityEngine.Random.Range(0.65f, 1.35f));
         ray.Age = randomizeAge ? UnityEngine.Random.Range(0.0f, ray.Lifetime) : 0.0f;
         ray.AlphaScale = UnityEngine.Random.Range(0.55f, 1.0f);
+        ray.DensitySeed = UnityEngine.Random.value;
     }
 
     private void EndHenshinLightEffects()
