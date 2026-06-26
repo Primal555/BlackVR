@@ -91,9 +91,13 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField, Range(0.0f, 0.35f)] private float eyeFlashDelayAfterBody = 0.08f;
     [SerializeField, Range(0.12f, 0.8f)] private float eyeFlashDuration = 0.42f;
     [SerializeField, Range(1, 4)] private int eyeFlashCount = 2;
+    [SerializeField, Range(0.1f, 0.8f)] private float eyeFlashOnRatio = 0.32f;
     [SerializeField] private string chestMarkMaterialKeywords = "SuitMark,胸マーク,マーク";
     [SerializeField, Range(0.05f, 1.2f)] private float chestMarkSweepDuration = 0.55f;
     [SerializeField, Range(0.01f, 0.75f)] private float chestMarkSweepWidth = 0.22f;
+    [SerializeField] private bool chestMarkSweepRightToLeft = true;
+    [SerializeField, Range(0.0f, 1.0f)] private float chestMarkMaskThreshold = 0.68f;
+    [SerializeField, Range(0.01f, 0.4f)] private float chestMarkMaskSoftness = 0.12f;
     [SerializeField, ColorUsage(true, true)] private Color chestMarkSweepColor = Color.white;
     [SerializeField, Range(0.0f, 10.0f)] private float chestMarkSweepIntensity = 4.0f;
 
@@ -824,7 +828,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             var beltIntensity = 1.0f - Mathf.SmoothStep(0.0f, 1.0f, beltFadeTime);
             var bodyFlash = bodyFlashTime < 1.0f ? EvaluatePulse(bodyFlashTime, bodyFlashCount) : 0.0f;
             var eyeFlash = eyeElapsed >= 0.0f && eyeFlashTime < 1.0f
-                ? EvaluateSeparatedPulse(eyeFlashTime, eyeFlashCount)
+                ? EvaluateBlinkPulse(eyeFlashTime, eyeFlashCount, eyeFlashOnRatio)
                 : 0.0f;
             var chestIntensity = eyeElapsed >= 0.0f && chestSweepTime < 1.0f
                 ? 1.0f
@@ -860,10 +864,35 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         return Mathf.Pow(pulse, 0.55f);
     }
 
-    private static float EvaluateSeparatedPulse(float normalizedTime, int pulseCount)
+    private static float EvaluateBlinkPulse(float normalizedTime, int pulseCount, float onRatio)
     {
-        var pulse = Mathf.Abs(Mathf.Sin(Mathf.Clamp01(normalizedTime) * Mathf.PI * Mathf.Max(1, pulseCount)));
-        return Mathf.SmoothStep(0.35f, 1.0f, pulse);
+        var count = Mathf.Max(1, pulseCount);
+        var scaledTime = Mathf.Clamp01(normalizedTime) * count;
+        if (scaledTime >= count)
+        {
+            return 0.0f;
+        }
+
+        var blinkPhase = scaledTime - Mathf.Floor(scaledTime);
+        var activeRatio = Mathf.Clamp(onRatio, 0.05f, 0.95f);
+        if (blinkPhase > activeRatio)
+        {
+            return 0.0f;
+        }
+
+        var localTime = blinkPhase / activeRatio;
+        const float fadeRatio = 0.18f;
+        if (localTime < fadeRatio)
+        {
+            return Mathf.SmoothStep(0.0f, 1.0f, localTime / fadeRatio);
+        }
+
+        if (localTime > 1.0f - fadeRatio)
+        {
+            return Mathf.SmoothStep(0.0f, 1.0f, (1.0f - localTime) / fadeRatio);
+        }
+
+        return 1.0f;
     }
 
     private void BeginBeltLightEffects(GameObject anchorModel)
@@ -1490,6 +1519,21 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         if (material.HasProperty("_SweepWidth"))
         {
             material.SetFloat("_SweepWidth", chestMarkSweepWidth);
+        }
+
+        if (material.HasProperty("_SweepDirection"))
+        {
+            material.SetFloat("_SweepDirection", chestMarkSweepRightToLeft ? -1.0f : 1.0f);
+        }
+
+        if (material.HasProperty("_MarkThreshold"))
+        {
+            material.SetFloat("_MarkThreshold", chestMarkMaskThreshold);
+        }
+
+        if (material.HasProperty("_MarkSoftness"))
+        {
+            material.SetFloat("_MarkSoftness", chestMarkMaskSoftness);
         }
 
         if (material.HasProperty("_SweepColor"))

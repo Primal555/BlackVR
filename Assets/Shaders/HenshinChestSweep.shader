@@ -8,6 +8,9 @@ Shader "KamenRider/HenshinChestSweep"
         _HalfWidth ("Half Width", Float) = 1.0
         _SweepProgress ("Sweep Progress", Range(0.0, 1.0)) = 0.0
         _SweepWidth ("Sweep Width", Range(0.01, 0.75)) = 0.22
+        _SweepDirection ("Sweep Direction", Float) = -1.0
+        _MarkThreshold ("Mark Threshold", Range(0.0, 1.0)) = 0.68
+        _MarkSoftness ("Mark Softness", Range(0.01, 0.4)) = 0.12
         [HDR] _SweepColor ("Sweep Color", Color) = (1, 1, 1, 1)
         _SweepIntensity ("Sweep Intensity", Range(0.0, 10.0)) = 0.0
         [HDR] _FlashColor ("Flash Color", Color) = (1, 1, 1, 1)
@@ -61,6 +64,9 @@ Shader "KamenRider/HenshinChestSweep"
                 float _HalfWidth;
                 float _SweepProgress;
                 float _SweepWidth;
+                float _SweepDirection;
+                float _MarkThreshold;
+                float _MarkSoftness;
                 float4 _SweepColor;
                 float _SweepIntensity;
                 float4 _FlashColor;
@@ -80,13 +86,16 @@ Shader "KamenRider/HenshinChestSweep"
             {
                 half4 baseColor = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv) * _BaseColor;
                 float normalizedX = saturate((input.positionOS.x - (_CenterX - _HalfWidth)) / max(0.0001, _HalfWidth * 2.0));
-                float revealed = 1.0 - smoothstep(_SweepProgress, _SweepProgress + 0.04, normalizedX);
-                float distanceToSweep = abs(normalizedX - _SweepProgress);
+                float sweepAxis = _SweepDirection < 0.0 ? 1.0 - normalizedX : normalizedX;
+                float revealed = 1.0 - smoothstep(_SweepProgress, _SweepProgress + 0.04, sweepAxis);
+                float distanceToSweep = abs(sweepAxis - _SweepProgress);
                 float leadingEdge = saturate(1.0 - distanceToSweep / max(0.0001, _SweepWidth));
                 leadingEdge = smoothstep(0.0, 1.0, leadingEdge);
                 float sweep = saturate(revealed * 0.45 + leadingEdge);
 
-                float3 glow = _SweepColor.rgb * (_SweepIntensity * sweep);
+                float luminance = dot(baseColor.rgb, float3(0.2126, 0.7152, 0.0722));
+                float markMask = smoothstep(_MarkThreshold, saturate(_MarkThreshold + _MarkSoftness), luminance);
+                float3 glow = _SweepColor.rgb * (_SweepIntensity * sweep * markMask);
                 glow += _FlashColor.rgb * _FlashIntensity;
                 return half4(baseColor.rgb + glow, baseColor.a);
             }
