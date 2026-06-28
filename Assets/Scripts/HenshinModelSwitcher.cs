@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.Rendering;
+using UnityEngine.Serialization;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
@@ -46,14 +47,15 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField] private GameObject previewSourceModel;
     [SerializeField, Range(0.1f, 1.0f)] private float previewStartScale = 0.75f;
     [SerializeField, Range(0.5f, 1.5f)] private float previewEndScale = 1.0f;
-    [Tooltip("Local offset applied only to the temporary preview model during the henshin reveal.")]
-    [SerializeField] private Vector3 previewLocalPositionOffset;
     [SerializeField, Range(0, 10)] private int previewTrackingWarmupFrames = 3;
     [SerializeField, Range(0.05f, 1.0f)] private float previewFadeDurationRatio = 0.55f;
     [SerializeField] private bool enableBeltReveal = true;
     [SerializeField] private Material beltRevealMaterial;
     [SerializeField] private string beltMaterialKeywords = "本体,metalg,metal,アーマー";
     [SerializeField] private string beltCenterMaterialKeywords = "ファン";
+    [FormerlySerializedAs("previewLocalPositionOffset")]
+    [Tooltip("Model-local offset applied only to belt reveal geometry and its light center.")]
+    [SerializeField] private Vector3 beltRevealLocalPositionOffset;
     [SerializeField, Range(0.01f, 0.5f)] private float beltCenterDurationRatio = 0.12f;
     [SerializeField, Range(0.05f, 0.75f)] private float beltExpandDurationRatio = 0.28f;
     [SerializeField, Range(0.01f, 0.5f)] private float beltRevealEdgeWidth = 0.08f;
@@ -130,7 +132,6 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     private AudioSource audioSource;
     private bool isTransformed;
     private Coroutine henshinSequenceRoutine;
-    private Vector3 sequencePreviewOriginalLocalPosition;
     private Vector3 sequencePreviewOriginalScale;
     private GameObject activeSequencePreviewModel;
     private readonly Dictionary<Renderer, bool> originalRendererStates = new Dictionary<Renderer, bool>();
@@ -428,7 +429,6 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
         BeginSequencePreview();
         yield return WaitForPreviewTrackingWarmup();
-        ApplyPreviewTransformOffset();
         SetSequencePreviewRenderersVisible(true);
         BeginBeltLightEffects(activeSequencePreviewModel);
 
@@ -499,9 +499,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             return;
         }
 
-        sequencePreviewOriginalLocalPosition = activeSequencePreviewModel.transform.localPosition;
         sequencePreviewOriginalScale = activeSequencePreviewModel.transform.localScale;
-        activeSequencePreviewModel.transform.localPosition = sequencePreviewOriginalLocalPosition + previewLocalPositionOffset;
         activeSequencePreviewModel.transform.localScale = enableBeltReveal
             ? sequencePreviewOriginalScale
             : sequencePreviewOriginalScale * previewStartScale;
@@ -517,8 +515,6 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             return;
         }
 
-        ApplyPreviewTransformOffset();
-
         if (!enableBeltReveal)
         {
             activeSequencePreviewModel.transform.localScale =
@@ -528,21 +524,10 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         SetPreviewAlpha(normalizedTime);
     }
 
-    private void ApplyPreviewTransformOffset()
-    {
-        if (activeSequencePreviewModel == null)
-        {
-            return;
-        }
-
-        activeSequencePreviewModel.transform.localPosition = sequencePreviewOriginalLocalPosition + previewLocalPositionOffset;
-    }
-
     private void EndSequencePreview(bool restoreVisibility)
     {
         if (activeSequencePreviewModel != null)
         {
-            activeSequencePreviewModel.transform.localPosition = sequencePreviewOriginalLocalPosition;
             activeSequencePreviewModel.transform.localScale = sequencePreviewOriginalScale;
         }
 
@@ -616,7 +601,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
                 }
 
                 var role = GetPreviewMaterialRole(originalMaterials[materialIndex]);
-                var previewMaterial = CreatePreviewMaterial(originalMaterials[materialIndex], targetRenderer, role);
+                var previewMaterial = CreatePreviewMaterial(originalMaterials[materialIndex], targetRenderer, role, target);
                 previewMaterialArray[materialIndex] = previewMaterial;
                 previewMaterials.Add(previewMaterial);
                 previewMaterialStates.Add(new PreviewMaterialState(previewMaterial, role));
@@ -627,11 +612,15 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
     }
 
-    private Material CreatePreviewMaterial(Material sourceMaterial, Renderer targetRenderer, PreviewMaterialRole role)
+    private Material CreatePreviewMaterial(
+        Material sourceMaterial,
+        Renderer targetRenderer,
+        PreviewMaterialRole role,
+        GameObject previewRoot)
     {
         if (enableBeltReveal && role != PreviewMaterialRole.Body)
         {
-            return CreateBeltRevealMaterial(sourceMaterial, targetRenderer);
+            return CreateBeltRevealMaterial(sourceMaterial, targetRenderer, previewRoot);
         }
 
         var previewMaterial = new Material(sourceMaterial);
@@ -639,7 +628,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         return previewMaterial;
     }
 
-    private Material CreateBeltRevealMaterial(Material sourceMaterial, Renderer targetRenderer)
+    private Material CreateBeltRevealMaterial(Material sourceMaterial, Renderer targetRenderer, GameObject previewRoot)
     {
         Material material;
         if (beltRevealMaterial != null)
@@ -653,7 +642,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         CopyBaseMaterialProperties(sourceMaterial, material);
-        ConfigureBeltRevealMaterial(material, targetRenderer, alpha: 0.0f, revealProgress: 0.0f);
+        ConfigureBeltRevealMaterial(material, targetRenderer, previewRoot, alpha: 0.0f, revealProgress: 0.0f);
         return material;
     }
 
@@ -1500,9 +1489,10 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
     private Vector3 ApplyBeltLightOffset(GameObject model, Vector3 worldPosition)
     {
+        var localOffset = beltLightLocalOffset + beltRevealLocalPositionOffset;
         return model != null
-            ? worldPosition + model.transform.TransformVector(beltLightLocalOffset)
-            : worldPosition + beltLightLocalOffset;
+            ? worldPosition + model.transform.TransformVector(localOffset)
+            : worldPosition + localOffset;
     }
 
     private static bool TryGetHumanoidBonePosition(GameObject model, HumanBodyBones bone, out Vector3 position)
@@ -2108,7 +2098,12 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
     }
 
-    private void ConfigureBeltRevealMaterial(Material material, Renderer targetRenderer, float alpha, float revealProgress)
+    private void ConfigureBeltRevealMaterial(
+        Material material,
+        Renderer targetRenderer,
+        GameObject previewRoot,
+        float alpha,
+        float revealProgress)
     {
         if (material == null || targetRenderer == null)
         {
@@ -2153,6 +2148,23 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         {
             material.SetFloat("_GlowIntensity", beltRevealGlowIntensity);
         }
+
+        if (material.HasProperty("_VertexOffsetOS"))
+        {
+            material.SetVector("_VertexOffsetOS", GetRendererObjectSpaceBeltRevealOffset(targetRenderer, previewRoot));
+        }
+    }
+
+    private Vector3 GetRendererObjectSpaceBeltRevealOffset(Renderer targetRenderer, GameObject previewRoot)
+    {
+        if (targetRenderer == null)
+        {
+            return beltRevealLocalPositionOffset;
+        }
+
+        var rootTransform = previewRoot != null ? previewRoot.transform : targetRenderer.transform;
+        var worldOffset = rootTransform.TransformVector(beltRevealLocalPositionOffset);
+        return targetRenderer.transform.InverseTransformVector(worldOffset);
     }
 
     private static Bounds GetRendererLocalBounds(Renderer targetRenderer)

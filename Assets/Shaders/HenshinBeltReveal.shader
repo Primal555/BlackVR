@@ -8,6 +8,7 @@ Shader "KamenRider/HenshinBeltReveal"
         _RevealProgress ("Reveal Progress", Range(0.0, 1.0)) = 0.0
         _CenterX ("Center X", Float) = 0.0
         _HalfWidth ("Half Width", Float) = 1.0
+        _VertexOffsetOS ("Vertex Offset OS", Vector) = (0, 0, 0, 0)
         _EdgeWidth ("Edge Width", Range(0.01, 0.5)) = 0.08
         [HDR] _GlowColor ("Glow Color", Color) = (1, 0.05, 0, 1)
         _GlowIntensity ("Glow Intensity", Range(0.0, 8.0)) = 2.5
@@ -61,6 +62,7 @@ Shader "KamenRider/HenshinBeltReveal"
                 float _RevealProgress;
                 float _CenterX;
                 float _HalfWidth;
+                float4 _VertexOffsetOS;
                 float _EdgeWidth;
                 float4 _GlowColor;
                 float _GlowIntensity;
@@ -69,9 +71,10 @@ Shader "KamenRider/HenshinBeltReveal"
             Varyings vert(Attributes input)
             {
                 Varyings output;
+                float3 positionOS = input.positionOS.xyz + _VertexOffsetOS.xyz;
                 output.positionOS = input.positionOS.xyz;
                 output.uv = TRANSFORM_TEX(input.uv, _BaseMap);
-                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                output.positionCS = TransformObjectToHClip(positionOS);
                 return output;
             }
 
