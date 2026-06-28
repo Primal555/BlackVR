@@ -77,6 +77,8 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField, Range(0.02f, 1.0f)] private float autoSteamMinSize = 0.14f;
     [SerializeField, Range(0.02f, 1.5f)] private float autoSteamMaxSize = 0.34f;
     [SerializeField, Range(0.0f, 2.0f)] private float autoSteamRiseSpeed = 0.45f;
+    [SerializeField, Range(0.0f, 1.0f)] private float autoSteamSurfaceOutwardSpeed = 0.22f;
+    [SerializeField, Range(0.2f, 8.0f)] private float autoSteamStretchLength = 2.6f;
     [SerializeField] private Vector3 autoSteamBoundsPadding = new Vector3(0.25f, 0.08f, 0.25f);
     [SerializeField, ColorUsage(false, true)] private Color autoSteamColor = new Color(0.9f, 0.95f, 1.0f, 0.34f);
 
@@ -1143,6 +1145,50 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             return;
         }
 
+        var steamObject = new GameObject("AutoHenshinSteamAirflow");
+        steamObject.transform.SetParent(transformedModel.transform, true);
+        steamObject.transform.position = transformedModel.transform.position;
+        steamObject.transform.rotation = Quaternion.identity;
+
+        var steamMaterial = CreateSteamParticleMaterial();
+        var skinnedRenderers = transformedModel.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+        var visibleSkinnedRenderers = new List<SkinnedMeshRenderer>();
+        for (var i = 0; i < skinnedRenderers.Length; i++)
+        {
+            var skinnedRenderer = skinnedRenderers[i];
+            if (skinnedRenderer != null && skinnedRenderer.enabled && skinnedRenderer.sharedMesh != null)
+            {
+                visibleSkinnedRenderers.Add(skinnedRenderer);
+            }
+        }
+
+        if (visibleSkinnedRenderers.Count > 0)
+        {
+            var ratePerRenderer = autoSteamEmissionRate / visibleSkinnedRenderers.Count;
+            var burstPerRenderer = Mathf.CeilToInt((float)autoSteamInitialBurstCount / visibleSkinnedRenderers.Count);
+            for (var i = 0; i < visibleSkinnedRenderers.Count; i++)
+            {
+                var emitter = new GameObject($"SteamAirflow_{visibleSkinnedRenderers[i].name}");
+                emitter.transform.SetParent(steamObject.transform, false);
+                var particleSystem = emitter.AddComponent<ParticleSystem>();
+                var particleRenderer = emitter.GetComponent<ParticleSystemRenderer>();
+                ConfigureSteamAirflowParticleSystem(
+                    particleSystem,
+                    particleRenderer,
+                    steamMaterial,
+                    visibleSkinnedRenderers[i],
+                    null,
+                    ratePerRenderer,
+                    burstPerRenderer);
+            }
+
+            StartCoroutine(DestroyAutoSteamBurst(
+                steamObject,
+                steamMaterial,
+                autoSteamDuration + Mathf.Max(autoSteamMinLifetime, autoSteamMaxLifetime) + 0.5f));
+            return;
+        }
+
         if (!TryGetHumanoidBodyBounds(transformedModel, out var bounds))
         {
             var renderers = transformedModel.GetComponentsInChildren<Renderer>(true);
@@ -1152,20 +1198,43 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             }
         }
 
-        var steamObject = new GameObject("AutoHenshinSteamBurst");
-        steamObject.transform.SetParent(transformedModel.transform, true);
         steamObject.transform.position = bounds.center;
-        steamObject.transform.rotation = Quaternion.identity;
 
         var particleSystem = steamObject.AddComponent<ParticleSystem>();
         var particleRenderer = steamObject.GetComponent<ParticleSystemRenderer>();
-        var steamMaterial = CreateSteamParticleMaterial();
+        ConfigureSteamAirflowParticleSystem(
+            particleSystem,
+            particleRenderer,
+            steamMaterial,
+            null,
+            bounds,
+            autoSteamEmissionRate,
+            autoSteamInitialBurstCount);
+
+        StartCoroutine(DestroyAutoSteamBurst(
+            steamObject,
+            steamMaterial,
+            autoSteamDuration + Mathf.Max(autoSteamMinLifetime, autoSteamMaxLifetime) + 0.5f));
+    }
+
+    private void ConfigureSteamAirflowParticleSystem(
+        ParticleSystem particleSystem,
+        ParticleSystemRenderer particleRenderer,
+        Material steamMaterial,
+        SkinnedMeshRenderer sourceRenderer,
+        Bounds? fallbackBounds,
+        float emissionRate,
+        int initialBurstCount)
+    {
         if (steamMaterial != null)
         {
             particleRenderer.sharedMaterial = steamMaterial;
         }
 
-        particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+        particleRenderer.renderMode = ParticleSystemRenderMode.Stretch;
+        particleRenderer.velocityScale = autoSteamStretchLength;
+        particleRenderer.lengthScale = autoSteamStretchLength;
+        particleRenderer.cameraVelocityScale = 0.0f;
         particleRenderer.sortingFudge = 0.25f;
 
         var main = particleSystem.main;
@@ -1181,36 +1250,47 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             Mathf.Min(autoSteamMinSize, autoSteamMaxSize),
             Mathf.Max(autoSteamMinSize, autoSteamMaxSize));
         main.startColor = new ParticleSystem.MinMaxGradient(autoSteamColor);
-        main.maxParticles = Mathf.CeilToInt((autoSteamDuration + autoSteamMaxLifetime) * autoSteamEmissionRate) + autoSteamInitialBurstCount;
+        main.maxParticles = Mathf.CeilToInt((autoSteamDuration + autoSteamMaxLifetime) * emissionRate) + initialBurstCount;
 
         var emission = particleSystem.emission;
         emission.enabled = true;
-        emission.rateOverTime = autoSteamEmissionRate;
-        var burstCount = (short)Mathf.Clamp(autoSteamInitialBurstCount, 0, short.MaxValue);
+        emission.rateOverTime = emissionRate;
+        var burstCount = (short)Mathf.Clamp(initialBurstCount, 0, short.MaxValue);
         emission.SetBursts(burstCount > 0
             ? new[] { new ParticleSystem.Burst(0.0f, burstCount) }
             : Array.Empty<ParticleSystem.Burst>());
 
         var shape = particleSystem.shape;
         shape.enabled = true;
-        shape.shapeType = ParticleSystemShapeType.Box;
-        shape.scale = new Vector3(
-            Mathf.Max(0.05f, bounds.size.x + autoSteamBoundsPadding.x),
-            Mathf.Max(0.05f, bounds.size.y + autoSteamBoundsPadding.y),
-            Mathf.Max(0.05f, bounds.size.z + autoSteamBoundsPadding.z));
+        shape.randomDirectionAmount = 0.28f;
+        shape.sphericalDirectionAmount = autoSteamSurfaceOutwardSpeed;
+        if (sourceRenderer != null)
+        {
+            shape.shapeType = ParticleSystemShapeType.SkinnedMeshRenderer;
+            shape.skinnedMeshRenderer = sourceRenderer;
+        }
+        else if (fallbackBounds.HasValue)
+        {
+            var bounds = fallbackBounds.Value;
+            shape.shapeType = ParticleSystemShapeType.Box;
+            shape.scale = new Vector3(
+                Mathf.Max(0.05f, bounds.size.x + autoSteamBoundsPadding.x),
+                Mathf.Max(0.05f, bounds.size.y + autoSteamBoundsPadding.y),
+                Mathf.Max(0.05f, bounds.size.z + autoSteamBoundsPadding.z));
+        }
 
         var velocity = particleSystem.velocityOverLifetime;
         velocity.enabled = true;
         velocity.space = ParticleSystemSimulationSpace.World;
-        velocity.x = new ParticleSystem.MinMaxCurve(-0.05f, 0.05f);
+        velocity.x = new ParticleSystem.MinMaxCurve(-0.035f, 0.035f);
         velocity.y = new ParticleSystem.MinMaxCurve(autoSteamRiseSpeed * 0.65f, autoSteamRiseSpeed * 1.25f);
-        velocity.z = new ParticleSystem.MinMaxCurve(-0.05f, 0.05f);
+        velocity.z = new ParticleSystem.MinMaxCurve(-0.035f, 0.035f);
 
         var noise = particleSystem.noise;
         noise.enabled = true;
-        noise.strength = 0.18f;
-        noise.frequency = 0.55f;
-        noise.scrollSpeed = 0.2f;
+        noise.strength = 0.12f;
+        noise.frequency = 0.42f;
+        noise.scrollSpeed = 0.16f;
 
         var colorOverLifetime = particleSystem.colorOverLifetime;
         colorOverLifetime.enabled = true;
@@ -1231,10 +1311,6 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         colorOverLifetime.color = new ParticleSystem.MinMaxGradient(gradient);
 
         particleSystem.Play(true);
-        StartCoroutine(DestroyAutoSteamBurst(
-            steamObject,
-            steamMaterial,
-            autoSteamDuration + Mathf.Max(autoSteamMinLifetime, autoSteamMaxLifetime) + 0.5f));
     }
 
     private IEnumerator DestroyAutoSteamBurst(GameObject steamObject, Material steamMaterial, float delay)
@@ -1258,6 +1334,33 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         var material = new Material(shader);
         SetMaterialColor(material, "_BaseColor", Color.white);
         SetMaterialColor(material, "_Color", Color.white);
+        if (material.HasProperty("_Surface"))
+        {
+            material.SetFloat("_Surface", 1.0f);
+        }
+
+        if (material.HasProperty("_Blend"))
+        {
+            material.SetFloat("_Blend", 0.0f);
+        }
+
+        if (material.HasProperty("_SrcBlend"))
+        {
+            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+        }
+
+        if (material.HasProperty("_DstBlend"))
+        {
+            material.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+        }
+
+        if (material.HasProperty("_ZWrite"))
+        {
+            material.SetFloat("_ZWrite", 0.0f);
+        }
+
+        material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        material.renderQueue = (int)RenderQueue.Transparent;
         return material;
     }
 
