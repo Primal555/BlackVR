@@ -625,7 +625,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     {
         if (enableBeltReveal && role != PreviewMaterialRole.Body)
         {
-            return CreateBeltRevealMaterial(sourceMaterial, targetRenderer, previewRoot);
+            return CreateBeltRevealMaterial(sourceMaterial, targetRenderer, role, previewRoot);
         }
 
         var previewMaterial = new Material(sourceMaterial);
@@ -633,7 +633,11 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         return previewMaterial;
     }
 
-    private Material CreateBeltRevealMaterial(Material sourceMaterial, Renderer targetRenderer, GameObject previewRoot)
+    private Material CreateBeltRevealMaterial(
+        Material sourceMaterial,
+        Renderer targetRenderer,
+        PreviewMaterialRole role,
+        GameObject previewRoot)
     {
         Material material;
         if (beltRevealMaterial != null)
@@ -647,7 +651,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         CopyBaseMaterialProperties(sourceMaterial, material);
-        ConfigureBeltRevealMaterial(material, targetRenderer, previewRoot, alpha: 0.0f, revealProgress: 0.0f);
+        ConfigureBeltRevealMaterial(material, targetRenderer, role, previewRoot, alpha: 0.0f, revealProgress: 0.0f);
         return material;
     }
 
@@ -2106,6 +2110,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     private void ConfigureBeltRevealMaterial(
         Material material,
         Renderer targetRenderer,
+        PreviewMaterialRole role,
         GameObject previewRoot,
         float alpha,
         float revealProgress)
@@ -2166,9 +2171,10 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             material.SetFloat("_CullMode", beltRevealDoubleSided ? (float)CullMode.Off : (float)CullMode.Back);
         }
 
+        var renderQueueOffset = role == PreviewMaterialRole.BeltCenter ? 140 : 100;
         material.renderQueue = beltRevealRenderOnTop
-            ? (int)RenderQueue.Transparent + 100
-            : (int)RenderQueue.Transparent;
+            ? (int)RenderQueue.Transparent + renderQueueOffset
+            : (int)RenderQueue.Transparent + (role == PreviewMaterialRole.BeltCenter ? 1 : 0);
 
         if (material.HasProperty("_VertexOffsetOS"))
         {
