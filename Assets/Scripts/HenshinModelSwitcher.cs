@@ -12,6 +12,9 @@ using UnityEngine.InputSystem;
 [DisallowMultipleComponent]
 public sealed class HenshinModelSwitcher : MonoBehaviour
 {
+    private const string BlackBeltMaterialPrefix = "Belt";
+    private const string BlackBeltCenterMaterialName = "KingStone";
+
     private enum VisibilityMode
     {
         RenderersOnly,
@@ -2351,12 +2354,14 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         var lookupText = GetMaterialLookupText(material);
-        if (MatchesAnyKeyword(lookupText, beltCenterMaterialKeywords))
+        var isBlackBeltCenterMaterial = MatchesAnyKeyword(lookupText, BlackBeltCenterMaterialName);
+        if (MatchesAnyKeyword(lookupText, beltCenterMaterialKeywords) || isBlackBeltCenterMaterial)
         {
             return PreviewMaterialRole.BeltCenter;
         }
 
-        if (MatchesAnyKeyword(lookupText, beltMaterialKeywords))
+        var isBlackBeltMaterial = MatchesAnyKeyword(lookupText, BlackBeltMaterialPrefix);
+        if (MatchesAnyKeyword(lookupText, beltMaterialKeywords) || isBlackBeltMaterial)
         {
             return PreviewMaterialRole.Belt;
         }
