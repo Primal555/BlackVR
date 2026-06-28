@@ -74,13 +74,12 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField, Range(0, 80)] private int autoSteamInitialBurstCount = 18;
     [SerializeField, Range(0.1f, 3.0f)] private float autoSteamMinLifetime = 0.7f;
     [SerializeField, Range(0.1f, 4.0f)] private float autoSteamMaxLifetime = 1.6f;
-    [SerializeField, Range(0.02f, 1.0f)] private float autoSteamMinSize = 0.14f;
-    [SerializeField, Range(0.02f, 1.5f)] private float autoSteamMaxSize = 0.34f;
+    [SerializeField, Range(0.02f, 1.0f)] private float autoSteamMinSize = 0.22f;
+    [SerializeField, Range(0.02f, 1.5f)] private float autoSteamMaxSize = 0.48f;
     [SerializeField, Range(0.0f, 2.0f)] private float autoSteamRiseSpeed = 0.45f;
-    [SerializeField, Range(0.0f, 1.0f)] private float autoSteamSurfaceOutwardSpeed = 0.22f;
-    [SerializeField, Range(0.2f, 8.0f)] private float autoSteamStretchLength = 2.6f;
+    [SerializeField, Range(0.0f, 1.0f)] private float autoSteamSurfaceOutwardSpeed = 0.12f;
     [SerializeField] private Vector3 autoSteamBoundsPadding = new Vector3(0.25f, 0.08f, 0.25f);
-    [SerializeField, ColorUsage(false, true)] private Color autoSteamColor = new Color(0.9f, 0.95f, 1.0f, 0.34f);
+    [SerializeField, ColorUsage(false, true)] private Color autoSteamColor = new Color(0.9f, 0.95f, 1.0f, 0.22f);
 
     [Header("Henshin Light Effects")]
     [SerializeField] private bool enableHenshinLightEffects = true;
@@ -1231,10 +1230,8 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             particleRenderer.sharedMaterial = steamMaterial;
         }
 
-        particleRenderer.renderMode = ParticleSystemRenderMode.Stretch;
-        particleRenderer.velocityScale = autoSteamStretchLength;
-        particleRenderer.lengthScale = autoSteamStretchLength;
-        particleRenderer.cameraVelocityScale = 0.0f;
+        particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+        particleRenderer.normalDirection = 0.0f;
         particleRenderer.sortingFudge = 0.25f;
 
         var main = particleSystem.main;
@@ -1249,6 +1246,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         main.startSize = new ParticleSystem.MinMaxCurve(
             Mathf.Min(autoSteamMinSize, autoSteamMaxSize),
             Mathf.Max(autoSteamMinSize, autoSteamMaxSize));
+        main.startRotation = new ParticleSystem.MinMaxCurve(0.0f, Mathf.PI * 2.0f);
         main.startColor = new ParticleSystem.MinMaxGradient(autoSteamColor);
         main.maxParticles = Mathf.CeilToInt((autoSteamDuration + autoSteamMaxLifetime) * emissionRate) + initialBurstCount;
 
@@ -1310,6 +1308,19 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             });
         colorOverLifetime.color = new ParticleSystem.MinMaxGradient(gradient);
 
+        var sizeOverLifetime = particleSystem.sizeOverLifetime;
+        sizeOverLifetime.enabled = true;
+        sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(
+            1.0f,
+            new AnimationCurve(
+                new Keyframe(0.0f, 0.55f),
+                new Keyframe(0.35f, 1.0f),
+                new Keyframe(1.0f, 1.55f)));
+
+        var rotationOverLifetime = particleSystem.rotationOverLifetime;
+        rotationOverLifetime.enabled = true;
+        rotationOverLifetime.z = new ParticleSystem.MinMaxCurve(-0.35f, 0.35f);
+
         particleSystem.Play(true);
     }
 
@@ -1323,6 +1334,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     private static Material CreateSteamParticleMaterial()
     {
         var shader =
+            Shader.Find("KamenRider/HenshinSoftSteam") ??
             Shader.Find("Universal Render Pipeline/Particles/Unlit") ??
             Shader.Find("Particles/Standard Unlit") ??
             Shader.Find("Sprites/Default");
