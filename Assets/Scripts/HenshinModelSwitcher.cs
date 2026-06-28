@@ -46,6 +46,8 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField] private GameObject previewSourceModel;
     [SerializeField, Range(0.1f, 1.0f)] private float previewStartScale = 0.75f;
     [SerializeField, Range(0.5f, 1.5f)] private float previewEndScale = 1.0f;
+    [Tooltip("Local offset applied only to the temporary preview model during the henshin reveal.")]
+    [SerializeField] private Vector3 previewLocalPositionOffset;
     [SerializeField, Range(0, 10)] private int previewTrackingWarmupFrames = 3;
     [SerializeField, Range(0.05f, 1.0f)] private float previewFadeDurationRatio = 0.55f;
     [SerializeField] private bool enableBeltReveal = true;
@@ -128,6 +130,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     private AudioSource audioSource;
     private bool isTransformed;
     private Coroutine henshinSequenceRoutine;
+    private Vector3 sequencePreviewOriginalLocalPosition;
     private Vector3 sequencePreviewOriginalScale;
     private GameObject activeSequencePreviewModel;
     private readonly Dictionary<Renderer, bool> originalRendererStates = new Dictionary<Renderer, bool>();
@@ -425,6 +428,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
         BeginSequencePreview();
         yield return WaitForPreviewTrackingWarmup();
+        ApplyPreviewTransformOffset();
         SetSequencePreviewRenderersVisible(true);
         BeginBeltLightEffects(activeSequencePreviewModel);
 
@@ -495,7 +499,9 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             return;
         }
 
+        sequencePreviewOriginalLocalPosition = activeSequencePreviewModel.transform.localPosition;
         sequencePreviewOriginalScale = activeSequencePreviewModel.transform.localScale;
+        activeSequencePreviewModel.transform.localPosition = sequencePreviewOriginalLocalPosition + previewLocalPositionOffset;
         activeSequencePreviewModel.transform.localScale = enableBeltReveal
             ? sequencePreviewOriginalScale
             : sequencePreviewOriginalScale * previewStartScale;
@@ -511,6 +517,8 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             return;
         }
 
+        ApplyPreviewTransformOffset();
+
         if (!enableBeltReveal)
         {
             activeSequencePreviewModel.transform.localScale =
@@ -520,10 +528,21 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         SetPreviewAlpha(normalizedTime);
     }
 
+    private void ApplyPreviewTransformOffset()
+    {
+        if (activeSequencePreviewModel == null)
+        {
+            return;
+        }
+
+        activeSequencePreviewModel.transform.localPosition = sequencePreviewOriginalLocalPosition + previewLocalPositionOffset;
+    }
+
     private void EndSequencePreview(bool restoreVisibility)
     {
         if (activeSequencePreviewModel != null)
         {
+            activeSequencePreviewModel.transform.localPosition = sequencePreviewOriginalLocalPosition;
             activeSequencePreviewModel.transform.localScale = sequencePreviewOriginalScale;
         }
 
