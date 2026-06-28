@@ -12,6 +12,8 @@ Shader "KamenRider/HenshinBeltReveal"
         _EdgeWidth ("Edge Width", Range(0.01, 0.5)) = 0.08
         [HDR] _GlowColor ("Glow Color", Color) = (1, 0.05, 0, 1)
         _GlowIntensity ("Glow Intensity", Range(0.0, 8.0)) = 2.5
+        [HideInInspector] _ZTestMode ("ZTest Mode", Float) = 4
+        [HideInInspector] _CullMode ("Cull Mode", Float) = 2
     }
 
     SubShader
@@ -28,9 +30,9 @@ Shader "KamenRider/HenshinBeltReveal"
             Name "HenshinBeltReveal"
             Tags { "LightMode" = "UniversalForward" }
 
-            Cull Back
+            Cull [_CullMode]
             ZWrite Off
-            ZTest LEqual
+            ZTest [_ZTestMode]
             Blend SrcAlpha OneMinusSrcAlpha
 
             HLSLPROGRAM

@@ -56,6 +56,8 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [FormerlySerializedAs("previewLocalPositionOffset")]
     [Tooltip("Model-local offset applied only to belt reveal geometry and its light center.")]
     [SerializeField] private Vector3 beltRevealLocalPositionOffset;
+    [SerializeField] private bool beltRevealRenderOnTop = true;
+    [SerializeField] private bool beltRevealDoubleSided = true;
     [SerializeField, Range(0.01f, 0.5f)] private float beltCenterDurationRatio = 0.12f;
     [SerializeField, Range(0.05f, 0.75f)] private float beltExpandDurationRatio = 0.28f;
     [SerializeField, Range(0.01f, 0.5f)] private float beltRevealEdgeWidth = 0.08f;
@@ -2148,6 +2150,22 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         {
             material.SetFloat("_GlowIntensity", beltRevealGlowIntensity);
         }
+
+        if (material.HasProperty("_ZTestMode"))
+        {
+            material.SetFloat(
+                "_ZTestMode",
+                beltRevealRenderOnTop ? (float)CompareFunction.Always : (float)CompareFunction.LessEqual);
+        }
+
+        if (material.HasProperty("_CullMode"))
+        {
+            material.SetFloat("_CullMode", beltRevealDoubleSided ? (float)CullMode.Off : (float)CullMode.Back);
+        }
+
+        material.renderQueue = beltRevealRenderOnTop
+            ? (int)RenderQueue.Transparent + 100
+            : (int)RenderQueue.Transparent;
 
         if (material.HasProperty("_VertexOffsetOS"))
         {
