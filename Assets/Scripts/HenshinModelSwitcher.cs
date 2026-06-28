@@ -60,6 +60,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [Tooltip("Model-local offset applied only to belt reveal geometry and its light center.")]
     [SerializeField] private Vector3 beltRevealLocalPositionOffset;
     [SerializeField] private bool beltRevealRenderOnTop = true;
+    [SerializeField] private string beltRevealDepthTestedMaterialKeywords = "BeltGray";
     [SerializeField] private bool beltRevealDoubleSided = true;
     [SerializeField, Range(0.01f, 0.5f)] private float beltCenterDurationRatio = 0.12f;
     [SerializeField, Range(0.05f, 0.75f)] private float beltExpandDurationRatio = 0.28f;
@@ -651,7 +652,8 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         CopyBaseMaterialProperties(sourceMaterial, material);
-        ConfigureBeltRevealMaterial(material, targetRenderer, role, previewRoot, alpha: 0.0f, revealProgress: 0.0f);
+        var renderOnTop = ShouldRenderBeltRevealOnTop(sourceMaterial);
+        ConfigureBeltRevealMaterial(material, targetRenderer, role, previewRoot, renderOnTop, alpha: 0.0f, revealProgress: 0.0f);
         return material;
     }
 
@@ -2112,6 +2114,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         Renderer targetRenderer,
         PreviewMaterialRole role,
         GameObject previewRoot,
+        bool renderOnTop,
         float alpha,
         float revealProgress)
     {
@@ -2163,7 +2166,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         {
             material.SetFloat(
                 "_ZTestMode",
-                beltRevealRenderOnTop ? (float)CompareFunction.Always : (float)CompareFunction.LessEqual);
+                renderOnTop ? (float)CompareFunction.Always : (float)CompareFunction.LessEqual);
         }
 
         if (material.HasProperty("_CullMode"))
@@ -2172,14 +2175,24 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         var renderQueueOffset = role == PreviewMaterialRole.BeltCenter ? 140 : 100;
-        material.renderQueue = beltRevealRenderOnTop
+        material.renderQueue = renderOnTop
             ? (int)RenderQueue.Transparent + renderQueueOffset
-            : (int)RenderQueue.Transparent + (role == PreviewMaterialRole.BeltCenter ? 1 : 0);
+            : GetDepthTestedBeltRevealRenderQueue(role);
 
         if (material.HasProperty("_VertexOffsetOS"))
         {
             material.SetVector("_VertexOffsetOS", GetRendererObjectSpaceBeltRevealOffset(targetRenderer, previewRoot));
         }
+    }
+
+    private int GetDepthTestedBeltRevealRenderQueue(PreviewMaterialRole role)
+    {
+        if (beltRevealRenderOnTop)
+        {
+            return (int)RenderQueue.Transparent - 10;
+        }
+
+        return (int)RenderQueue.Transparent + (role == PreviewMaterialRole.BeltCenter ? 1 : 0);
     }
 
     private Vector3 GetRendererObjectSpaceBeltRevealOffset(Renderer targetRenderer, GameObject previewRoot)
@@ -2373,6 +2386,17 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         return PreviewMaterialRole.Body;
+    }
+
+    private bool ShouldRenderBeltRevealOnTop(Material sourceMaterial)
+    {
+        if (!beltRevealRenderOnTop)
+        {
+            return false;
+        }
+
+        var lookupText = GetMaterialLookupText(sourceMaterial);
+        return !MatchesAnyKeyword(lookupText, beltRevealDepthTestedMaterialKeywords);
     }
 
     private static string GetMaterialLookupText(Material material)
