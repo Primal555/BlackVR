@@ -67,6 +67,19 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField] private ParticleSystem henshinParticles;
     [SerializeField] private ParticleSystem steamParticles;
 
+    [Header("Auto Steam Burst")]
+    [SerializeField] private bool enableAutoSteamBurst = true;
+    [SerializeField, Range(0.2f, 5.0f)] private float autoSteamDuration = 2.0f;
+    [SerializeField, Range(2.0f, 80.0f)] private float autoSteamEmissionRate = 24.0f;
+    [SerializeField, Range(0, 80)] private int autoSteamInitialBurstCount = 18;
+    [SerializeField, Range(0.1f, 3.0f)] private float autoSteamMinLifetime = 0.7f;
+    [SerializeField, Range(0.1f, 4.0f)] private float autoSteamMaxLifetime = 1.6f;
+    [SerializeField, Range(0.02f, 1.0f)] private float autoSteamMinSize = 0.14f;
+    [SerializeField, Range(0.02f, 1.5f)] private float autoSteamMaxSize = 0.34f;
+    [SerializeField, Range(0.0f, 2.0f)] private float autoSteamRiseSpeed = 0.45f;
+    [SerializeField] private Vector3 autoSteamBoundsPadding = new Vector3(0.25f, 0.08f, 0.25f);
+    [SerializeField, ColorUsage(false, true)] private Color autoSteamColor = new Color(0.9f, 0.95f, 1.0f, 0.34f);
+
     [Header("Henshin Light Effects")]
     [SerializeField] private bool enableHenshinLightEffects = true;
     [SerializeField, Range(0.0f, 0.6f)] private float postSwitchLightDurationRatio = 0.24f;
@@ -444,10 +457,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
 
         EndHenshinLightEffects();
 
-        if (steamParticles != null)
-        {
-            steamParticles.Play(true);
-        }
+        PlaySteamEffects();
 
         henshinSequenceRoutine = null;
     }
@@ -1111,6 +1121,200 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         beltLightRays.Clear();
+    }
+
+    private void PlaySteamEffects()
+    {
+        if (steamParticles != null)
+        {
+            steamParticles.Play(true);
+        }
+
+        if (enableAutoSteamBurst)
+        {
+            PlayAutoSteamBurst();
+        }
+    }
+
+    private void PlayAutoSteamBurst()
+    {
+        if (transformedModel == null)
+        {
+            return;
+        }
+
+        if (!TryGetHumanoidBodyBounds(transformedModel, out var bounds))
+        {
+            var renderers = transformedModel.GetComponentsInChildren<Renderer>(true);
+            if (!TryGetRendererBounds(renderers, out bounds))
+            {
+                bounds = new Bounds(transformedModel.transform.position + Vector3.up * 0.9f, new Vector3(0.8f, 1.8f, 0.55f));
+            }
+        }
+
+        var steamObject = new GameObject("AutoHenshinSteamBurst");
+        steamObject.transform.SetParent(transformedModel.transform, true);
+        steamObject.transform.position = bounds.center;
+        steamObject.transform.rotation = Quaternion.identity;
+
+        var particleSystem = steamObject.AddComponent<ParticleSystem>();
+        var particleRenderer = steamObject.GetComponent<ParticleSystemRenderer>();
+        var steamMaterial = CreateSteamParticleMaterial();
+        if (steamMaterial != null)
+        {
+            particleRenderer.sharedMaterial = steamMaterial;
+        }
+
+        particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+        particleRenderer.sortingFudge = 0.25f;
+
+        var main = particleSystem.main;
+        main.duration = Mathf.Max(0.01f, autoSteamDuration);
+        main.loop = false;
+        main.prewarm = false;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(
+            Mathf.Min(autoSteamMinLifetime, autoSteamMaxLifetime),
+            Mathf.Max(autoSteamMinLifetime, autoSteamMaxLifetime));
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.03f, 0.18f);
+        main.startSize = new ParticleSystem.MinMaxCurve(
+            Mathf.Min(autoSteamMinSize, autoSteamMaxSize),
+            Mathf.Max(autoSteamMinSize, autoSteamMaxSize));
+        main.startColor = new ParticleSystem.MinMaxGradient(autoSteamColor);
+        main.maxParticles = Mathf.CeilToInt((autoSteamDuration + autoSteamMaxLifetime) * autoSteamEmissionRate) + autoSteamInitialBurstCount;
+
+        var emission = particleSystem.emission;
+        emission.enabled = true;
+        emission.rateOverTime = autoSteamEmissionRate;
+        var burstCount = (short)Mathf.Clamp(autoSteamInitialBurstCount, 0, short.MaxValue);
+        emission.SetBursts(burstCount > 0
+            ? new[] { new ParticleSystem.Burst(0.0f, burstCount) }
+            : Array.Empty<ParticleSystem.Burst>());
+
+        var shape = particleSystem.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Box;
+        shape.scale = new Vector3(
+            Mathf.Max(0.05f, bounds.size.x + autoSteamBoundsPadding.x),
+            Mathf.Max(0.05f, bounds.size.y + autoSteamBoundsPadding.y),
+            Mathf.Max(0.05f, bounds.size.z + autoSteamBoundsPadding.z));
+
+        var velocity = particleSystem.velocityOverLifetime;
+        velocity.enabled = true;
+        velocity.space = ParticleSystemSimulationSpace.World;
+        velocity.x = new ParticleSystem.MinMaxCurve(-0.05f, 0.05f);
+        velocity.y = new ParticleSystem.MinMaxCurve(autoSteamRiseSpeed * 0.65f, autoSteamRiseSpeed * 1.25f);
+        velocity.z = new ParticleSystem.MinMaxCurve(-0.05f, 0.05f);
+
+        var noise = particleSystem.noise;
+        noise.enabled = true;
+        noise.strength = 0.18f;
+        noise.frequency = 0.55f;
+        noise.scrollSpeed = 0.2f;
+
+        var colorOverLifetime = particleSystem.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        var gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(Color.white, 0.0f),
+                new GradientColorKey(new Color(0.86f, 0.92f, 1.0f), 1.0f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(0.0f, 0.0f),
+                new GradientAlphaKey(autoSteamColor.a, 0.12f),
+                new GradientAlphaKey(autoSteamColor.a * 0.55f, 0.55f),
+                new GradientAlphaKey(0.0f, 1.0f)
+            });
+        colorOverLifetime.color = new ParticleSystem.MinMaxGradient(gradient);
+
+        particleSystem.Play(true);
+        StartCoroutine(DestroyAutoSteamBurst(
+            steamObject,
+            steamMaterial,
+            autoSteamDuration + Mathf.Max(autoSteamMinLifetime, autoSteamMaxLifetime) + 0.5f));
+    }
+
+    private IEnumerator DestroyAutoSteamBurst(GameObject steamObject, Material steamMaterial, float delay)
+    {
+        yield return new WaitForSeconds(Mathf.Max(0.01f, delay));
+        DestroyUnityObject(steamObject);
+        DestroyUnityObject(steamMaterial);
+    }
+
+    private static Material CreateSteamParticleMaterial()
+    {
+        var shader =
+            Shader.Find("Universal Render Pipeline/Particles/Unlit") ??
+            Shader.Find("Particles/Standard Unlit") ??
+            Shader.Find("Sprites/Default");
+        if (shader == null)
+        {
+            return null;
+        }
+
+        var material = new Material(shader);
+        SetMaterialColor(material, "_BaseColor", Color.white);
+        SetMaterialColor(material, "_Color", Color.white);
+        return material;
+    }
+
+    private static bool TryGetHumanoidBodyBounds(GameObject model, out Bounds bounds)
+    {
+        bounds = default;
+        var animator = model != null ? model.GetComponentInChildren<Animator>(true) : null;
+        if (animator == null || !animator.isHuman)
+        {
+            return false;
+        }
+
+        var bones = new[]
+        {
+            HumanBodyBones.Head,
+            HumanBodyBones.Chest,
+            HumanBodyBones.Hips,
+            HumanBodyBones.LeftUpperArm,
+            HumanBodyBones.LeftLowerArm,
+            HumanBodyBones.LeftHand,
+            HumanBodyBones.RightUpperArm,
+            HumanBodyBones.RightLowerArm,
+            HumanBodyBones.RightHand,
+            HumanBodyBones.LeftUpperLeg,
+            HumanBodyBones.LeftLowerLeg,
+            HumanBodyBones.LeftFoot,
+            HumanBodyBones.RightUpperLeg,
+            HumanBodyBones.RightLowerLeg,
+            HumanBodyBones.RightFoot
+        };
+
+        var hasBounds = false;
+        for (var i = 0; i < bones.Length; i++)
+        {
+            var boneTransform = animator.GetBoneTransform(bones[i]);
+            if (boneTransform == null)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = new Bounds(boneTransform.position, Vector3.zero);
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(boneTransform.position);
+            }
+        }
+
+        if (hasBounds)
+        {
+            bounds.Expand(new Vector3(0.35f, 0.25f, 0.35f));
+        }
+
+        return hasBounds;
     }
 
     private static Material CreateLightRayMaterial(Color tintColor, float intensity)
