@@ -37,10 +37,7 @@ public sealed class MovementSdkOvrThumbstickInput : MonoBehaviour
     private void FixedUpdate()
     {
         var input = ReadMoveInput();
-        if (_locomotion != null)
-        {
-            _locomotion.UserInput = input;
-        }
+        TrySetLocomotionInput(input);
 
         if (_writeAnimatorParameters)
         {
@@ -50,12 +47,25 @@ public sealed class MovementSdkOvrThumbstickInput : MonoBehaviour
 
     private void OnDisable()
     {
-        if (_locomotion != null)
+        TrySetLocomotionInput(Vector2.zero);
+        ApplyAnimatorParameters(Vector2.zero);
+    }
+
+    private void TrySetLocomotionInput(Vector2 input)
+    {
+        if (_locomotion == null)
         {
-            _locomotion.UserInput = Vector2.zero;
+            return;
         }
 
-        ApplyAnimatorParameters(Vector2.zero);
+        try
+        {
+            _locomotion.UserInput = input;
+        }
+        catch (MissingReferenceException)
+        {
+            // MovementSDKLocomotion may outlive one of its internal transform references during teardown.
+        }
     }
 
     private Vector2 ReadMoveInput()

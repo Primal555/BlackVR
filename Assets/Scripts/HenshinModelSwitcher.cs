@@ -1170,11 +1170,11 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
             {
                 var emitter = new GameObject($"SteamAirflow_{visibleSkinnedRenderers[i].name}");
                 emitter.transform.SetParent(steamObject.transform, false);
-                var particleSystem = emitter.AddComponent<ParticleSystem>();
-                var particleRenderer = emitter.GetComponent<ParticleSystemRenderer>();
+                var airflowParticleSystem = emitter.AddComponent<ParticleSystem>();
+                var airflowParticleRenderer = emitter.GetComponent<ParticleSystemRenderer>();
                 ConfigureSteamAirflowParticleSystem(
-                    particleSystem,
-                    particleRenderer,
+                    airflowParticleSystem,
+                    airflowParticleRenderer,
                     steamMaterial,
                     visibleSkinnedRenderers[i],
                     null,
