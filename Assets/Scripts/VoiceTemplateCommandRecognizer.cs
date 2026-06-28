@@ -47,6 +47,11 @@ public sealed class VoiceTemplateCommandRecognizer : MonoBehaviour
     [SerializeField] private bool logRecognition = true;
     [SerializeField] private VoiceCommand[] commands = Array.Empty<VoiceCommand>();
 
+    [Header("Command Gate")]
+    [SerializeField] private bool enableCommandGate;
+    [SerializeField] private bool commandGateOpen = true;
+    [SerializeField] private string[] allowedCommandIdsWhenGateClosed = Array.Empty<string>();
+
     private const int FeatureFrames = 32;
     private const int FeatureBands = 8;
     private const int VadFrameSize = 320;
@@ -144,6 +149,18 @@ public sealed class VoiceTemplateCommandRecognizer : MonoBehaviour
         currentUtteranceSamples.Clear();
         isCapturingUtterance = false;
         isListening = true;
+    }
+
+    public void ConfigureCommandGate(bool enabled, bool open, params string[] allowedWhenClosed)
+    {
+        enableCommandGate = enabled;
+        commandGateOpen = open;
+        allowedCommandIdsWhenGateClosed = allowedWhenClosed ?? Array.Empty<string>();
+    }
+
+    public void SetCommandGateOpen(bool open)
+    {
+        commandGateOpen = open;
     }
 
     public void StopListening()
@@ -346,7 +363,41 @@ public sealed class VoiceTemplateCommandRecognizer : MonoBehaviour
             return;
         }
 
+        if (!IsCommandAllowed(bestCommand.commandId))
+        {
+            nextRecognitionAllowedTime = Time.unscaledTime + recognitionCooldownSeconds;
+            if (logRecognition)
+            {
+                Debug.Log($"Voice command ignored by gate: {bestCommand.commandId}, score={bestScore:0.000}", this);
+            }
+
+            return;
+        }
+
         DispatchCommand(bestCommand, bestScore);
+    }
+
+    private bool IsCommandAllowed(string commandId)
+    {
+        if (!enableCommandGate || commandGateOpen)
+        {
+            return true;
+        }
+
+        if (allowedCommandIdsWhenGateClosed == null)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < allowedCommandIdsWhenGateClosed.Length; i++)
+        {
+            if (string.Equals(allowedCommandIdsWhenGateClosed[i], commandId, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void DispatchCommand(VoiceCommand command, float score)

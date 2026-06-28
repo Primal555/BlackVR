@@ -21,6 +21,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     [SerializeField] private VoiceTemplateCommandRecognizer recognizer;
     [SerializeField] private string commandId = "black变身音效";
     [SerializeField] private bool transformOnlyOnce = true;
+    [SerializeField] private bool gateVoiceCommandsByForm = true;
 
     [Header("Models")]
     [SerializeField] private GameObject[] beforeModels = Array.Empty<GameObject>();
@@ -287,6 +288,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         else
         {
             isTransformed = transformedModel != null && IsVisible(transformedModel);
+            UpdateVoiceCommandGate(isTransformed);
         }
     }
 
@@ -2359,6 +2361,7 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
     private void SetTransformedState(bool transformed, bool invokeEvents)
     {
         isTransformed = transformed;
+        UpdateVoiceCommandGate(transformed);
 
         for (var i = 0; i < beforeModels.Length; i++)
         {
@@ -2379,6 +2382,19 @@ public sealed class HenshinModelSwitcher : MonoBehaviour
         }
 
         onResetToBefore?.Invoke();
+    }
+
+    private void UpdateVoiceCommandGate(bool transformed)
+    {
+        if (recognizer == null)
+        {
+            return;
+        }
+
+        recognizer.ConfigureCommandGate(
+            gateVoiceCommandsByForm,
+            transformed,
+            commandId);
     }
 
     private void PlayResetClip()
