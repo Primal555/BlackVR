@@ -22,28 +22,44 @@ public static class ShadowMoonCombatSetup
         }
 
         var scene = SceneManager.GetActiveScene();
-        var rigs = UnityEngine.Object.FindObjectsOfType<OVRCameraRig>()
-            .Where(r => r.gameObject.scene == scene && r.GetComponentInParent<MovementSdkOvrThumbstickInput>() != null).ToArray();
-        var modelAsset = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPath);
-        var modelAnimator = modelAsset != null ? modelAsset.GetComponentInChildren<Animator>() : null;
-        var idle = AssetDatabase.LoadAllAssetsAtPath(IdlePath).OfType<AnimationClip>()
-            .FirstOrDefault(c => !c.name.StartsWith("__preview__", StringComparison.Ordinal));
-        var shader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (rigs.Length != 1 || modelAnimator == null || modelAnimator.avatar == null ||
-            !modelAnimator.avatar.isValid || !modelAnimator.avatar.isHuman || idle == null || shader == null)
+        if (!scene.IsValid() || !scene.isLoaded || EditorSceneManager.IsPreviewScene(scene))
         {
-            Debug.LogError("[ShadowMoon] Setup requires exactly one active player OVRCameraRig in the active scene, " +
-                "a valid ShadowMoon Humanoid avatar, the sample Idle clip, and the URP Unlit shader. No scene objects were changed.");
+            Debug.LogError("[ShadowMoon] Open a normal scene before creating the NPC.");
             return;
         }
-        var rig = rigs[0];
-        if (rig.leftHandAnchor == null || rig.rightHandAnchor == null || rig.centerEyeAnchor == null)
+        var modelAsset = AssetDatabase.LoadAssetAtPath<GameObject>(ModelPath);
+        if (modelAsset == null)
         {
-            Debug.LogError("[ShadowMoon] The player rig is missing hand or eye anchors.");
+            Debug.LogError("[ShadowMoon] Model asset not found: " + ModelPath);
+            return;
+        }
+        var modelAnimator = modelAsset.GetComponentInChildren<Animator>(true);
+        if (modelAnimator == null || modelAnimator.avatar == null)
+        {
+            Debug.LogError("[ShadowMoon] The imported model has no Animator with an Avatar: " + ModelPath, modelAsset);
+            return;
+        }
+        if (!modelAnimator.avatar.isValid || !modelAnimator.avatar.isHuman)
+        {
+            Debug.LogError("[ShadowMoon] The model Avatar cannot play Humanoid Idle. " +
+                $"isValid={modelAnimator.avatar.isValid}, isHuman={modelAnimator.avatar.isHuman}. Check the model's Rig import settings.", modelAsset);
+            return;
+        }
+        var idle = AssetDatabase.LoadAllAssetsAtPath(IdlePath).OfType<AnimationClip>()
+            .FirstOrDefault(c => !c.name.StartsWith("__preview__", StringComparison.Ordinal));
+        if (idle == null)
+        {
+            Debug.LogError("[ShadowMoon] No animation clip found in: " + IdlePath);
+            return;
+        }
+        var shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null)
+        {
+            Debug.LogError("[ShadowMoon] Hit-spark shader not found: Universal Render Pipeline/Unlit.");
             return;
         }
 
-        var player = rig.GetComponentInParent<MovementSdkOvrThumbstickInput>().transform;
+        var canBindPlayer = TryResolvePlayer(scene, out var rig, out var player);
         var existing = UnityEngine.Object.FindObjectsOfType<ShadowMoonHitReceiver>(true)
             .FirstOrDefault(t => t.gameObject.scene == scene);
         Undo.IncrementCurrentGroup();
@@ -52,13 +68,24 @@ public static class ShadowMoonCombatSetup
         GameObject root = null;
         try
         {
-            BindHand(rig.leftHandAnchor, rig, player, OVRInput.Controller.LTouch);
-            BindHand(rig.rightHandAnchor, rig, player, OVRInput.Controller.RTouch);
+            if (canBindPlayer)
+            {
+                BindHand(rig.leftHandAnchor, rig, player, OVRInput.Controller.LTouch);
+                BindHand(rig.rightHandAnchor, rig, player, OVRInput.Controller.RTouch);
+            }
             if (existing != null)
             {
+                if (canBindPlayer)
+                {
+                    Undo.RecordObject(existing, "Bind NPC collision source");
+                    existing.BindPlayer(player);
+                    PrefabUtility.RecordPrefabInstancePropertyModifications(existing);
+                    EditorUtility.SetDirty(existing);
+                }
                 Selection.activeGameObject = existing.gameObject;
                 EditorSceneManager.MarkSceneDirty(scene);
-                Debug.Log("[ShadowMoon] Existing target retained; hand bindings refreshed.", existing);
+                Debug.Log(canBindPlayer ? "[ShadowMoon] Existing NPC retained; player hit detection bindings refreshed."
+                    : "[ShadowMoon] Existing NPC retained. Player hit detection is not bound; see the binding warning.", existing);
                 return;
             }
 
@@ -87,7 +114,7 @@ public static class ShadowMoonCombatSetup
             pivot.SetParent(root.transform, false);
             var model = (GameObject)PrefabUtility.InstantiatePrefab(modelAsset, scene);
             model.transform.SetParent(pivot, false);
-            var animator = model.GetComponentInChildren<Animator>();
+            var animator = model.GetComponentInChildren<Animator>(true);
             animator.runtimeAnimatorController = controller;
             animator.applyRootMotion = false;
             animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
@@ -107,14 +134,19 @@ public static class ShadowMoonCombatSetup
             foreach (var renderer in model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                 renderer.updateWhenOffscreen = true;
 
-            var forward = Vector3.ProjectOnPlane(rig.centerEyeAnchor.forward, Vector3.up).normalized;
-            if (forward.sqrMagnitude < 0.1f) forward = player.forward;
-            var destination = rig.centerEyeAnchor.position + forward * 2f;
-            destination.y = player.position.y;
+            // The NPC can be placed and tested even in a scene without a VR player.
+            var viewpoint = canBindPlayer ? rig.centerEyeAnchor : null;
+            var forward = viewpoint != null ? Vector3.ProjectOnPlane(viewpoint.forward, Vector3.up).normalized : Vector3.forward;
+            if (forward.sqrMagnitude < 0.1f) forward = Vector3.forward;
+            var destination = viewpoint != null ? viewpoint.position + forward * 2f
+                : SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.pivot : Vector3.zero;
+            var floorReferenceHeight = canBindPlayer ? player.position.y : destination.y;
+            destination.y = floorReferenceHeight;
             var groundHits = Physics.RaycastAll(destination + Vector3.up * 3f, Vector3.down, 10f,
                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
-            var floor = groundHits.Where(h => !h.transform.IsChildOf(player) && !h.transform.IsChildOf(root.transform) && h.normal.y > 0.7f)
-                .OrderBy(h => Mathf.Abs(h.point.y - player.position.y)).ToArray();
+            var floor = groundHits.Where(h => (player == null || !h.transform.IsChildOf(player)) &&
+                    (rig == null || !h.transform.IsChildOf(rig.transform)) && !h.transform.IsChildOf(root.transform) && h.normal.y > 0.7f)
+                .OrderBy(h => Mathf.Abs(h.point.y - floorReferenceHeight)).ToArray();
             if (floor.Length > 0) destination.y = floor[0].point.y;
             else Debug.LogWarning("[ShadowMoon] No floor found at the initial position. Place the target on a street collider before Play.");
             root.transform.SetPositionAndRotation(destination + Vector3.up * 0.02f, Quaternion.LookRotation(-forward, Vector3.up));
@@ -140,7 +172,8 @@ public static class ShadowMoonCombatSetup
             EditorSceneManager.MarkSceneDirty(scene);
             AssetDatabase.SaveAssets();
             Selection.activeGameObject = root;
-            Debug.Log("[ShadowMoon] Target created with hand hit detection. Check its street position and save the scene. " +
+            Debug.Log("[ShadowMoon] Independent standing NPC created. Player hit detection bound: " + canBindPlayer +
+                ". Check its street position and save the scene. " +
                 "In Play Mode, the receiver component's Test Hit context menu works without a headset.", root);
         }
         catch (Exception exception)
@@ -155,6 +188,47 @@ public static class ShadowMoonCombatSetup
         }
     }
 
+    private static bool TryResolvePlayer(Scene targetScene, out OVRCameraRig rig, out Transform player)
+    {
+        rig = null;
+        player = null;
+        var inputs = UnityEngine.Object.FindObjectsOfType<MovementSdkOvrThumbstickInput>()
+            .Where(input => input.isActiveAndEnabled && input.gameObject.scene == targetScene).ToArray();
+        if (inputs.Length != 1)
+        {
+            Debug.LogWarning($"[ShadowMoon] Found {inputs.Length} candidate player input components in scene '{targetScene.name}'. " +
+                "The NPC can still be created and tested independently. To bind punches, enable one player input component and rerun Setup.");
+            return false;
+        }
+
+        // Use the same explicit reference as locomotion. In this project the camera
+        // rig is a separate scene root, linked by OVRCameraRigFollowsLocomotion.
+        var inputData = new SerializedObject(inputs[0]);
+        var locomotion = inputData.FindProperty("_locomotion")?.objectReferenceValue;
+        if (locomotion != null)
+        {
+            var locomotionData = new SerializedObject(locomotion);
+            rig = locomotionData.FindProperty("_cameraRig")?.objectReferenceValue as OVRCameraRig;
+        }
+        if (rig == null)
+        {
+            var childRigs = inputs[0].GetComponentsInChildren<OVRCameraRig>()
+                .Where(candidate => candidate.isActiveAndEnabled).ToArray();
+            if (childRigs.Length == 1) rig = childRigs[0];
+        }
+        if (rig == null || rig.gameObject.scene != targetScene || !rig.isActiveAndEnabled || rig.trackingSpace == null ||
+            rig.leftHandAnchor == null || rig.rightHandAnchor == null || rig.centerEyeAnchor == null)
+        {
+            Debug.LogWarning("[ShadowMoon] Player locomotion's camera rig is missing, in another scene, inactive, or lacks tracking anchors. " +
+                "The independent NPC can still be tested using Test Hit. Check the player's camera reference and rerun Setup.", inputs[0]);
+            rig = null;
+            return false;
+        }
+        player = inputs[0].transform;
+        Debug.Log($"[ShadowMoon] Player hit detection: {player.name} -> {rig.name}. The NPC uses its own Animator.", inputs[0]);
+        return true;
+    }
+
     private static void BindHand(Transform anchor, OVRCameraRig rig, Transform player, OVRInput.Controller hand)
     {
         var detector = anchor.GetComponent<VrHandStrikeDetector>();
@@ -163,6 +237,7 @@ public static class ShadowMoonCombatSetup
         detector.Configure(rig, player, hand);
         PrefabUtility.RecordPrefabInstancePropertyModifications(detector);
         EditorUtility.SetDirty(detector);
+        EditorSceneManager.MarkSceneDirty(anchor.gameObject.scene);
     }
 
     private static ParticleSystem CreateSparks(Transform parent, Material material)

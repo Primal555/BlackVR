@@ -37,6 +37,11 @@ public sealed class ShadowMoonHitReceiver : MonoBehaviour
         hitParticles = particles;
     }
 
+    public void BindPlayer(Transform player)
+    {
+        playerRoot = player;
+    }
+
     private void Awake()
     {
         body = GetComponent<Rigidbody>();

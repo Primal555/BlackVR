@@ -124,7 +124,8 @@ public sealed class VrHandStrikeDetector : MonoBehaviour
 
     private bool IsPlayer(Collider collider)
     {
-        return collider == null || collider.transform.IsChildOf(playerRoot);
+        return collider == null || collider.transform.IsChildOf(playerRoot) ||
+            (cameraRig != null && collider.transform.IsChildOf(cameraRig.transform));
     }
 
     private void OnDrawGizmosSelected()

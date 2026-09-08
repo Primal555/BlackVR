@@ -9,7 +9,11 @@
 3. 选中新建的 `ShadowMoon Combat Target`，确认其位于街道地面上，没有嵌入墙体，再保存场景。
 4. 进入 Play Mode，用控制器快速挥向影月身体。普通走路接触会产生物理碰撞，达到碰撞速度阈值时轻微后仰；只有手部有效命中触发打击事件。
 
-菜单读取当前玩家的 OVRCameraRig，向左右 Hand Anchor 添加 `VrHandStrikeDetector`。不会为影月添加 OVRBody、RetargetingLayer 或 RigBuilder。影月使用独立的待机 Animator Controller，关闭 Root Motion。
+影月是独立 NPC，当前只站桩方便调试，后续可以加入电脑控制的战斗逻辑。它使用自己的待机 Animator Controller，关闭 Root Motion；不添加 OVRBody、RetargetingLayer 或 RigBuilder，也不跟随玩家头显和手柄。
+
+玩家侧绑定优先读取现有 MovementSDKLocomotion 的 `_cameraRig` 引用，支持相机 Rig 和 PlayerController 分别位于场景根级的结构，再向左右 Hand Anchor 添加 `VrHandStrikeDetector`。相机引用仅用于玩家挥拳检测，不驱动影月。
+
+没有找到明确的玩家绑定时，仍可创建和测试影月，Console 会单独说明未绑定的原因。确认玩家配置后重新运行同一菜单即可补充绑定。玩家与影月需处于同一场景，以保证引用可随场景正常保存；无需处于同一父物体下。
 
 重复运行菜单会保留已有受击目标并刷新手部绑定，不重复创建。生成的控制器和火花材质位于 `Assets/Characters/ShadowMoon/Combat`。场景修改支持 Undo；菜单不会自动保存场景。
 
